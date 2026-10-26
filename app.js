@@ -23,33 +23,56 @@ function showOperator(id){let o=data.operators.find(x=>String(x.id)===String(id)
 $('searchOp').oninput=renderOperators;$('filterCode').onchange=renderOperators;$('operatorMonth').onchange=()=>{data.operatorMonth=$('operatorMonth').value;renderOperators()};
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}function download(name,content,type){let a=document.createElement('a'),u=URL.createObjectURL(new Blob([content],{type}));a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 $('exportOperators').onclick=()=>{let n=Number(new Date(($('operatorMonth').value||'2026-11')+'-01').getFullYear()),m=Number(new Date(($('operatorMonth').value||'2026-11')+'-01').getMonth()+1),days=new Date(n,m,0).getDate();let lines=[['ID','Cognome','Nome',...Array.from({length:days},(_,i)=>i+1)].map(csvCell).join(',')];data.operators.forEach(o=>lines.push([o.id,o.surname,o.name,...Array.from({length:days},(_,i)=>o.codes[i]||'')].map(csvCell).join(',')));download('operatori-turni.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8')};
-function normalizePdfText(text){return text.replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-').replace(/[|]/g,' ').replace(/[ \t]+/g,' ').trim()}
+function normalizePdfText(text){
+  return String(text||'').replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-').replace(/\r/g,'').split('\n').map(line=>line.replace(/[ \t]+/g,' ').trim()).filter(Boolean).join('\n');
+}
+const SHIFT_TOKEN=/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS|[A-Z]{2,5})$/i;
 function parsePdfLines(text,days){
-  const lines=normalizePdfText(text).split(/\r?\n/).map(x=>x.trim()).filter(Boolean),out=[],seen=new Set();
-  const codeRe=/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS|[A-Z]{2,5})$/i;
+  const lines=normalizePdfText(text).split('\n'),out=[],seen=new Set();
   for(const raw of lines){
-    const line=raw.replace(/\s+/g,' ').trim();
-    if(!/^\d{4,7}\s/.test(line))continue;
-    const tokens=line.split(' ');
-    const id=tokens.shift();
-    if(seen.has(id))continue;
-    // Locate the first shift-like token; everything before it is the operator's name.
-    let first=-1;
-    for(let i=1;i<tokens.length;i++){if(codeRe.test(tokens[i])&&(/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS)$/i.test(tokens[i]))){first=i;break}}
-    if(first<1)continue;
+    const line=raw.trim();
+    const m=line.match(/^(\d{4,7})\s+(.+)$/);
+    if(!m) continue;
+    const id=m[1]; if(seen.has(id)) continue;
+    const tokens=m[2].trim().split(/\s+/); let first=-1;
+    for(let i=1;i<tokens.length;i++){
+      if(/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS)$/i.test(tokens[i])){first=i;break}
+    }
+    if(first<1) continue;
     const nameTokens=tokens.slice(0,first);
-    const codes=tokens.slice(first).filter(t=>codeRe.test(t)).slice(0,days);
-    // Reject headings and partial/non-operator rows; require a substantial sequence of day codes.
-    if(codes.length<Math.max(10,Math.floor(days*.65)))continue;
-    let surname=nameTokens[0]||'',name=nameTokens.slice(1).join(' ');
-    // Compound surnames and names are kept as tokens; the user can correct either field in preview.
-    const normalized=Array.from({length:days},(_,i)=>(codes[i]||'').toUpperCase());
-    out.push({id,surname,name,codes:normalized,confidence:Math.min(100,Math.round(codes.length/days*100)),sourceLine:raw});
-    seen.add(id);
+    const rawCodes=tokens.slice(first).filter(t=>SHIFT_TOKEN.test(t)).slice(0,days);
+    if(rawCodes.length < Math.min(days,Math.max(10,Math.floor(days*.65)))) continue;
+    const surname=nameTokens[0]||'', name=nameTokens.slice(1).join(' ');
+    const codes=Array.from({length:days},(_,i)=>(rawCodes[i]||'').toUpperCase());
+    out.push({id,surname,name,codes,confidence:Math.round(rawCodes.length/days*100),sourceLine:line}); seen.add(id);
   }
   return out;
 }
-$('readPdf').onclick=async()=>{let file=$('pdfFile').files[0];if(!file){$('pdfStatus').textContent='Seleziona prima un PDF.';return}if(!window.pdfjsLib){$('pdfStatus').textContent='Lettore PDF non caricato: verifica la connessione Internet e riprova.';return}try{$('pdfStatus').textContent='Lettura PDF in corso…';pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';let pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise,text='';for(let p=1;p<=pdf.numPages;p++){let page=await pdf.getPage(p),content=await page.getTextContent(),items=content.items.map(it=>({str:it.str||'',x:it.transform[4],y:it.transform[5]})).filter(it=>it.str.trim());items.sort((a,b)=>Math.abs(a.y-b.y)>2?b.y-a.y:a.x-b.x);let lines=[],band=[],bandY=null;for(let it of items){if(bandY!==null&&Math.abs(it.y-bandY)>2.5){lines.push(band.sort((a,b)=>a.x-b.x).map(x=>x.str).join(' '));band=[];bandY=it.y}else if(bandY===null)bandY=it.y;band.push(it);if(bandY===null)bandY=it.y}if(band.length)lines.push(band.sort((a,b)=>a.x-b.x).map(x=>x.str).join(' '));text+=lines.join('\n')+'\n'}$('pdfRawText').value=text;$('pdfTextPanel').classList.remove('hidden');let monthMatch=text.match(/\b([a-z]{3})-(\d{2})\b/i);if(monthMatch){let mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',mag:'05',jun:'06',giu:'06',jul:'07',lug:'07',aug:'08',ago:'08',sep:'09',set:'09',oct:'10',ott:'10',nov:'11',dec:'12',dic:'12'}[monthMatch[1].toLowerCase()];if(mm)$('pdfMonth').value=`20${monthMatch[2]}-${mm}`}let date=$('pdfMonth').value.split('-'),days=new Date(Number(date[0]),Number(date[1]),0).getDate();previewRows=parsePdfLines(text,days);previewDays=days;renderPreview();$('pdfStatus').textContent=`PDF letto (${pdf.numPages} pagina/e). Riconosciuti ${previewRows.length} operatori. Verifica ID, cognome, nome e sequenza dei giorni nell'anteprima prima di importare.`}catch(e){console.error(e);$('pdfStatus').textContent='Errore durante la lettura. Se il PDF è una scansione, occorre OCR; prova un PDF con testo selezionabile.'}};
+function groupPdfItemsIntoLines(items){
+  const sorted=items.filter(it=>String(it.str||'').trim()).sort((a,b)=>b.y-a.y||a.x-b.x),bands=[];
+  for(const item of sorted){let band=bands.find(b=>Math.abs(b.y-item.y)<=2.2);if(!band){band={y:item.y,items:[]};bands.push(band)}band.items.push(item)}
+  bands.sort((a,b)=>b.y-a.y);
+  return bands.map(b=>b.items.sort((a,b)=>a.x-b.x).map(it=>it.str.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+}
+$('readPdf').onclick=async()=>{
+  const file=$('pdfFile').files[0];
+  if(!file){$('pdfStatus').textContent='Seleziona prima un PDF.';return}
+  if(!window.pdfjsLib){$('pdfStatus').textContent='Lettore PDF non caricato. Ricarica la pagina con Internet attivo; se persiste, prova ad aprire la webapp in una scheda anonima.';return}
+  try{
+    $('readPdf').disabled=true;$('pdfStatus').textContent='Lettura PDF in corso…';
+    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let pagesText=[];
+    for(let p=1;p<=pdf.numPages;p++){const page=await pdf.getPage(p),content=await page.getTextContent();const items=content.items.map(it=>({str:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0}));pagesText.push(groupPdfItemsIntoLines(items).join('\n'))}
+    const text=pagesText.join('\n');$('pdfRawText').value=text;$('pdfTextPanel').classList.remove('hidden');
+    const monthMatch=text.match(/\b(jan|feb|mar|apr|may|mag|jun|giu|jul|lug|aug|ago|sep|set|oct|ott|nov|dec|dic)[a-z]*[-\s/]+(20\d{2}|\d{2})\b/i);
+    if(monthMatch){const mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',mag:'05',jun:'06',giu:'06',jul:'07',lug:'07',aug:'08',ago:'08',sep:'09',set:'09',oct:'10',ott:'10',nov:'11',dec:'12',dic:'12'}[monthMatch[1].slice(0,3).toLowerCase()];if(mm){let yy=monthMatch[2];if(yy.length===2)yy='20'+yy;$('pdfMonth').value=`${yy}-${mm}`}}
+    const [year,monthNum]=$('pdfMonth').value.split('-').map(Number),days=new Date(year,monthNum,0).getDate();
+    previewRows=parsePdfLines(text,days);previewDays=days;renderPreview();
+    const valid=previewRows.filter(o=>o.codes.filter(Boolean).length===days).length;
+    $('pdfStatus').textContent=previewRows.length?`PDF letto: ${pdf.numPages} pagina/e. Riconosciuti ${previewRows.length} operatori; ${valid} righe con tutti i ${days} giorni. Controlla le prime e ultime righe prima di importare.`:`Il PDF è stato aperto (${pdf.numPages} pagina/e), ma non sono state riconosciute righe complete. Apri “Mostra testo estratto dal PDF”: se è vuoto o disordinato, il PDF può richiedere OCR o un adattamento specifico.`;
+  }catch(e){console.error(e);$('pdfStatus').textContent='Impossibile leggere il PDF. Prova a scaricarlo di nuovo e assicurati che non sia protetto da password. Se il testo è una scansione, serve OCR.'}
+  finally{$('readPdf').disabled=false}
+};
 function renderPreview(){let root=$('previewTable');$('previewStats').textContent=`Operatori riconosciuti: ${previewRows.length} · Giorni previsti: ${previewDays}`;if(!previewRows.length){root.innerHTML='<p style="padding:12px">Nessun operatore riconosciuto automaticamente. Controlla il testo estratto oppure inviami il PDF per adattare il parser.</p>';return}root.innerHTML=`<table><thead><tr><th>ID</th><th>Cognome</th><th>Nome</th>${Array.from({length:previewDays},(_,i)=>`<th>${i+1}</th>`).join('')}<th>Copertura</th></tr></thead><tbody>${previewRows.map((o,i)=>`<tr><td><input data-i="${i}" data-k="id" value="${esc(o.id)}" style="width:70px"></td><td><input data-i="${i}" data-k="surname" value="${esc(o.surname)}" style="width:125px"></td><td><input data-i="${i}" data-k="name" value="${esc(o.name)}" style="width:125px"></td>${Array.from({length:previewDays},(_,j)=>`<td><input data-i="${i}" data-day="${j}" value="${esc(o.codes[j]||'')}" style="width:46px"></td>`).join('')}<td>${o.codes.filter(Boolean).length}/${previewDays}</td></tr>`).join('')}</tbody></table>`;root.querySelectorAll('input[data-i]').forEach(inp=>inp.onchange=()=>{let o=previewRows[Number(inp.dataset.i)];if(inp.dataset.k)o[inp.dataset.k]=inp.value;else if(inp.dataset.day!==undefined)o.codes[Number(inp.dataset.day)]=inp.value.trim().toUpperCase()})}
 $('pdfMonth').onchange=()=>{let [y,m]=$('pdfMonth').value.split('-').map(Number);previewDays=new Date(y,m,0).getDate();previewRows=previewRows.map(o=>({...o,codes:Array.from({length:previewDays},(_,i)=>o.codes[i]||'')}));renderPreview()};
 $('clearPreview').onclick=()=>{previewRows=[];$('pdfStatus').textContent='Anteprima svuotata.';$('pdfRawText').value='';renderPreview()};
