@@ -1,10 +1,8 @@
 {
   "name": "Calendario Turni",
   "short_name": "Turni",
-  "description": "Calendario personale dei turni di lavoro",
   "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#f3f6fb",
-  "theme_color": "#172554",
-  "icons": []
+  "theme_color": "#172554"
 }

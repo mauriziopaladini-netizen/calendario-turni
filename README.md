@@ -1,36 +1,17 @@
-# Calendario Turni — versione iniziale
+# Calendario Turni v1.3
 
-Webapp PWA in italiano per gestire i turni di lavoro su telefono e PC.
+Webapp per calendario personale e quadro generale operatori da PDF.
 
-## Funzioni incluse
-- Calendario mensile con colori e più turni per giorno
-- Vista annuale
-- Turni personalizzabili con codice, colore e orari
-- Applicazione di cicli ripetitivi su un intervallo
-- Importazione/esportazione CSV
+## Funzioni
+- Calendario mensile e vista annuale
+- Turni personali, colori, ciclo ripetitivo
+- Statistiche e stampa PDF
+- Lettura PDF nel browser con PDF.js
+- Quadro generale operatori con ricerca, filtro per codice, dettaglio mensile ed esportazione CSV
 - Backup e ripristino JSON
-- Statistiche per intervallo e stampa/salvataggio in PDF dal browser
-- Salvataggio automatico locale e supporto base offline via service worker
 
-## Avvio rapido
-Per provare la webapp basta aprire `index.html` in un browser. Per installazione PWA e funzionamento offline completo, pubblicare i file su un hosting HTTPS, ad esempio GitHub Pages.
+## Import PDF
+La funzione usa PDF.js via CDN, quindi per leggere PDF serve una connessione Internet. L'estrazione avviene nel browser e non carica il PDF su un server. Il parser è sperimentale e va verificato sull'anteprima. È predisposto per righe con ID, cognome, nome e codici giornalieri Hxx/R1/R2/FER/OFF. PDF scansionati richiedono OCR e non sono ancora supportati.
 
-## Sincronizzazione telefono-PC
-Questa versione non carica i dati su Internet. Per evitare che i turni personali vengano inviati a un servizio senza consenso, la sincronizzazione cloud è lasciata come passaggio successivo. Al momento è possibile trasferire il calendario tra dispositivi usando **Turni e strumenti → Scarica backup JSON** e poi **Ripristina backup** sull'altro dispositivo.
-
-## CSV supportato
-Intestazioni: `data,codice,note`
-Esempio:
-```csv
-data,codice,note
-2026-11-01,7,
-2026-11-02,Riposo,
-2026-11-03,13,Turno modificato
-```
-La prima riga è considerata intestazione. La data deve essere `YYYY-MM-DD`.
-
-## Prossimi sviluppi consigliati
-1. Sincronizzazione cloud con account/autenticazione e conflitti gestiti.
-2. Importazione guidata di Excel e PDF, con anteprima prima di applicare i dati.
-3. Modifica di un turno esistente più completa (orari, colore e nome in un unico modulo).
-4. Promemoria locali per i turni.
+## Pubblicazione
+Carica i file nella radice del repository GitHub e abilita GitHub Pages dal branch `main`, cartella `/ (root)`.
