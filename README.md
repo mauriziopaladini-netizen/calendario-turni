@@ -1,17 +1,18 @@
-# Calendario Turni v1.3
+# Calendario Turni v1.4
 
-Webapp per calendario personale e quadro generale operatori da PDF.
+Webapp in italiano per calendario personale e quadro generale degli operatori.
 
 ## Funzioni
-- Calendario mensile e vista annuale
-- Turni personali, colori, ciclo ripetitivo
-- Statistiche e stampa PDF
-- Lettura PDF nel browser con PDF.js
-- Quadro generale operatori con ricerca, filtro per codice, dettaglio mensile ed esportazione CSV
-- Backup e ripristino JSON
-
-## Import PDF
-La funzione usa PDF.js via CDN, quindi per leggere PDF serve una connessione Internet. L'estrazione avviene nel browser e non carica il PDF su un server. Il parser è sperimentale e va verificato sull'anteprima. È predisposto per righe con ID, cognome, nome e codici giornalieri Hxx/R1/R2/FER/OFF. PDF scansionati richiedono OCR e non sono ancora supportati.
+- Calendario personale mensile e turni personalizzati.
+- Lettore PDF nel browser basato su PDF.js (richiede connessione Internet per caricare la libreria).
+- Estrazione testo e riconoscimento preliminare delle righe operatore con ID, cognome, nome e codici giornalieri.
+- Anteprima modificabile prima dell'importazione.
+- Pagina “Tutti gli operatori” con ricerca, filtro codice, prospetto a griglia e dettaglio operatore.
+- Esportazione CSV del quadro generale.
+- Backup/ripristino JSON e salvataggio locale.
 
 ## Pubblicazione
-Carica i file nella radice del repository GitHub e abilita GitHub Pages dal branch `main`, cartella `/ (root)`.
+Carica i file nella radice del repository GitHub e abilita GitHub Pages da `main` / root.
+
+## Limiti
+Il parser è adattato a prospetti PDF testuali con ID numerico, nome/cognome e codici come H14, R1, R2, FER, OFF. Il layout estratto dai PDF può variare: verificare sempre l'anteprima. I PDF scannerizzati richiedono OCR non incluso. La sincronizzazione cloud telefono-PC non è ancora attiva; per trasferire dati usa il backup JSON.
