@@ -1,18 +1,15 @@
-# Calendario Turni v1.5
+# Calendario Turni v1.7 — lettore PDF riprogettato
 
-Webapp in italiano per calendario personale e quadro generale degli operatori.
+Il lettore usa PDF.js per estrarre gli elementi testuali con coordinate, raggrupparli per riga e riconoscere le colonne giornaliere dall'intestazione numerica. I codici vengono assegnati al giorno in base alla posizione orizzontale, non soltanto all'ordine del testo.
 
 ## Funzioni
-- Calendario personale mensile e turni personalizzati.
-- Lettore PDF nel browser basato su PDF.js (richiede connessione Internet per caricare la libreria).
-- Estrazione testo e riconoscimento preliminare delle righe operatore con ID, cognome, nome e codici giornalieri.
-- Anteprima modificabile prima dell'importazione.
-- Pagina “Tutti gli operatori” con ricerca, filtro codice, prospetto a griglia e dettaglio operatore.
-- Esportazione CSV del quadro generale.
-- Backup/ripristino JSON e salvataggio locale.
-
-## Pubblicazione
-Carica i file nella radice del repository GitHub e abilita GitHub Pages da `main` / root.
+- Lettura PDF testuali multipagina.
+- Riconoscimento geometrico delle colonne giorno.
+- Anteprima modificabile e conferma prima dell'importazione.
+- Quadro generale operatori, ricerca, filtri, esportazione CSV e backup JSON.
 
 ## Limiti
-Il parser è stato migliorato per prospetti come “nov-26”: riconosce ID numerici, cognomi/nome e sequenze giornaliere di codici (Hxx, R1, R2, FER e codici affini), con anteprima e indicazione di copertura. Il parsing resta da verificare caso per caso. Il layout estratto dai PDF può variare: verificare sempre l'anteprima. I PDF scannerizzati richiedono OCR non incluso. La sincronizzazione cloud telefono-PC non è ancora attiva; per trasferire dati usa il backup JSON.
+I PDF scannerizzati richiedono OCR, non incluso in questa versione. Il riconoscimento è tarato sul prospetto A3 orizzontale fornito; verificare sempre l'anteprima. Sincronizzazione cloud non attiva.
+
+## Pubblicazione
+Caricare i cinque file nella radice del repository GitHub Pages (`main` / root). Dopo il commit fare Ctrl+F5 e attendere il refresh della cache.

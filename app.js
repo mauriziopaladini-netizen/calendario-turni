@@ -23,55 +23,71 @@ function showOperator(id){let o=data.operators.find(x=>String(x.id)===String(id)
 $('searchOp').oninput=renderOperators;$('filterCode').onchange=renderOperators;$('operatorMonth').onchange=()=>{data.operatorMonth=$('operatorMonth').value;renderOperators()};
 function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}function download(name,content,type){let a=document.createElement('a'),u=URL.createObjectURL(new Blob([content],{type}));a.href=u;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(u),1000)}
 $('exportOperators').onclick=()=>{let n=Number(new Date(($('operatorMonth').value||'2026-11')+'-01').getFullYear()),m=Number(new Date(($('operatorMonth').value||'2026-11')+'-01').getMonth()+1),days=new Date(n,m,0).getDate();let lines=[['ID','Cognome','Nome',...Array.from({length:days},(_,i)=>i+1)].map(csvCell).join(',')];data.operators.forEach(o=>lines.push([o.id,o.surname,o.name,...Array.from({length:days},(_,i)=>o.codes[i]||'')].map(csvCell).join(',')));download('operatori-turni.csv','\ufeff'+lines.join('\r\n'),'text/csv;charset=utf-8')};
-function normalizePdfText(text){
-  return String(text||'').replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-').replace(/\r/g,'').split('\n').map(line=>line.replace(/[ \t]+/g,' ').trim()).filter(Boolean).join('\n');
-}
-const SHIFT_TOKEN=/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS|[A-Z]{2,5})$/i;
-function parsePdfLines(text,days){
-  const lines=normalizePdfText(text).split('\n'),out=[],seen=new Set();
-  for(const raw of lines){
-    const line=raw.trim();
-    const m=line.match(/^(\d{4,7})\s+(.+)$/);
-    if(!m) continue;
-    const id=m[1]; if(seen.has(id)) continue;
-    const tokens=m[2].trim().split(/\s+/); let first=-1;
-    for(let i=1;i<tokens.length;i++){
-      if(/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS)$/i.test(tokens[i])){first=i;break}
-    }
-    if(first<1) continue;
-    const nameTokens=tokens.slice(0,first);
-    const rawCodes=tokens.slice(first).filter(t=>SHIFT_TOKEN.test(t)).slice(0,days);
-    if(rawCodes.length < Math.min(days,Math.max(10,Math.floor(days*.65)))) continue;
-    const surname=nameTokens[0]||'', name=nameTokens.slice(1).join(' ');
-    const codes=Array.from({length:days},(_,i)=>(rawCodes[i]||'').toUpperCase());
-    out.push({id,surname,name,codes,confidence:Math.round(rawCodes.length/days*100),sourceLine:line}); seen.add(id);
+
+function normalizePdfText(text){return String(text||'').replace(/\u00a0/g,' ').replace(/[‐‑–—]/g,'-').replace(/\r/g,'').trim()}
+function groupPdfItems(items, tolerance=3.2){
+  const sorted=items.filter(i=>(i.str||'').trim()).sort((a,b)=>b.y-a.y||a.x-b.x), rows=[];
+  for(const item of sorted){
+    let row=rows.find(r=>Math.abs(r.y-item.y)<=tolerance);
+    if(!row){row={y:item.y,items:[]};rows.push(row)}
+    row.items.push(item);row.y=row.items.reduce((s,x)=>s+x.y,0)/row.items.length;
   }
-  return out;
+  rows.sort((a,b)=>b.y-a.y);rows.forEach(r=>r.items.sort((a,b)=>a.x-b.x));return rows;
 }
-function groupPdfItemsIntoLines(items){
-  const sorted=items.filter(it=>String(it.str||'').trim()).sort((a,b)=>b.y-a.y||a.x-b.x),bands=[];
-  for(const item of sorted){let band=bands.find(b=>Math.abs(b.y-item.y)<=2.2);if(!band){band={y:item.y,items:[]};bands.push(band)}band.items.push(item)}
-  bands.sort((a,b)=>b.y-a.y);
-  return bands.map(b=>b.items.sort((a,b)=>a.x-b.x).map(it=>it.str.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim()).filter(Boolean);
+function detectDayColumns(rows, expectedDays){
+  let best=null;
+  for(const row of rows){
+    const found={};
+    for(const it of row.items){
+      const t=String(it.str||'').trim();
+      if(/^(?:[1-9]|[12]\d|3[01])$/.test(t)){const n=Number(t),cx=it.x+(it.w||0)/2;if(n<=expectedDays)found[n]=cx}
+    }
+    const seq=Object.keys(found).length;
+    if(!best||seq>best.seq)best={found,seq};
+  }
+  if(best&&best.seq>=Math.min(10,expectedDays*.45)){
+    const known=Object.entries(best.found).map(([d,x])=>({d:Number(d),x})).sort((a,b)=>a.d-b.d),steps=[];
+    for(let i=1;i<known.length;i++)if(known[i].d>known[i-1].d)steps.push((known[i].x-known[i-1].x)/(known[i].d-known[i-1].d));
+    steps.sort((a,b)=>a-b);const step=steps[Math.floor(steps.length/2)]||30,cols=[];
+    for(let d=1;d<=expectedDays;d++){if(best.found[d]!==undefined)cols[d]=best.found[d];else{const near=known.reduce((a,b)=>Math.abs(b.d-d)<Math.abs(a.d-d)?b:a);cols[d]=near.x+(d-near.d)*step}}
+    return cols;
+  }
+  return null;
+}
+function parsePdfGeometry(allPages, days){
+  const allRows=allPages.flatMap(items=>groupPdfItems(items)), dayCols=detectDayColumns(allRows,days), out=[],seen=new Set();
+  const codeRe=/^(?:H\d{1,3}|R\d{1,2}|FER|OFF|RIP|RIPOSO|MAL|104|FEST|FESTIVO|SM|ASP|ASS)$/i;
+  for(const row of allRows){
+    const its=row.items,text=its.map(i=>i.str).join(' ').replace(/\s+/g,' ').trim();
+    const idItem=its.find(i=>/^\d{4,7}$/.test(String(i.str||'').trim())&&i.x<80);
+    if(!idItem)continue;const id=String(idItem.str).trim();if(seen.has(id))continue;
+    const surname=its.filter(i=>i.x>=42&&i.x<138).map(i=>i.str.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+    const name=its.filter(i=>i.x>=138&&i.x<218).map(i=>i.str.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
+    const codes=Array(days).fill('');
+    if(dayCols)for(const it of its){const t=String(it.str||'').trim().toUpperCase();if(!codeRe.test(t))continue;const cx=it.x+(it.w||0)/2;let nearest=1,dist=Infinity;for(let d=1;d<=days;d++){const dd=Math.abs(dayCols[d]-cx);if(dd<dist){dist=dd;nearest=d}}if(dist<16)codes[nearest-1]=t}
+    const count=codes.filter(Boolean).length;
+    if(!surname||!name||count<Math.min(days,Math.max(8,Math.floor(days*.5))))continue;
+    out.push({id,surname,name,codes,confidence:Math.round(count/days*100),sourceLine:text});seen.add(id);
+  }
+  return {rows:out,dayColumnsDetected:!!dayCols,rowsDetected:allRows.length};
 }
 $('readPdf').onclick=async()=>{
-  const file=$('pdfFile').files[0];
-  if(!file){$('pdfStatus').textContent='Seleziona prima un PDF.';return}
-  if(!window.pdfjsLib){$('pdfStatus').textContent='Lettore PDF non caricato. Ricarica la pagina con Internet attivo; se persiste, prova ad aprire la webapp in una scheda anonima.';return}
-  try{
-    $('readPdf').disabled=true;$('pdfStatus').textContent='Lettura PDF in corso…';
-    pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let pagesText=[];
-    for(let p=1;p<=pdf.numPages;p++){const page=await pdf.getPage(p),content=await page.getTextContent();const items=content.items.map(it=>({str:it.str||'',x:it.transform?.[4]||0,y:it.transform?.[5]||0}));pagesText.push(groupPdfItemsIntoLines(items).join('\n'))}
-    const text=pagesText.join('\n');$('pdfRawText').value=text;$('pdfTextPanel').classList.remove('hidden');
-    const monthMatch=text.match(/\b(jan|feb|mar|apr|may|mag|jun|giu|jul|lug|aug|ago|sep|set|oct|ott|nov|dec|dic)[a-z]*[-\s/]+(20\d{2}|\d{2})\b/i);
-    if(monthMatch){const mm={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',mag:'05',jun:'06',giu:'06',jul:'07',lug:'07',aug:'08',ago:'08',sep:'09',set:'09',oct:'10',ott:'10',nov:'11',dec:'12',dic:'12'}[monthMatch[1].slice(0,3).toLowerCase()];if(mm){let yy=monthMatch[2];if(yy.length===2)yy='20'+yy;$('pdfMonth').value=`${yy}-${mm}`}}
-    const [year,monthNum]=$('pdfMonth').value.split('-').map(Number),days=new Date(year,monthNum,0).getDate();
-    previewRows=parsePdfLines(text,days);previewDays=days;renderPreview();
-    const valid=previewRows.filter(o=>o.codes.filter(Boolean).length===days).length;
-    $('pdfStatus').textContent=previewRows.length?`PDF letto: ${pdf.numPages} pagina/e. Riconosciuti ${previewRows.length} operatori; ${valid} righe con tutti i ${days} giorni. Controlla le prime e ultime righe prima di importare.`:`Il PDF è stato aperto (${pdf.numPages} pagina/e), ma non sono state riconosciute righe complete. Apri “Mostra testo estratto dal PDF”: se è vuoto o disordinato, il PDF può richiedere OCR o un adattamento specifico.`;
-  }catch(e){console.error(e);$('pdfStatus').textContent='Impossibile leggere il PDF. Prova a scaricarlo di nuovo e assicurati che non sia protetto da password. Se il testo è una scansione, serve OCR.'}
-  finally{$('readPdf').disabled=false}
+ const file=$('pdfFile').files[0];if(!file){$('pdfStatus').textContent='Seleziona prima un PDF.';return}
+ if(!window.pdfjsLib){$('pdfStatus').textContent='PDF.js non è disponibile: controlla la connessione Internet.';return}
+ try{
+  $('readPdf').disabled=true;$('pdfStatus').textContent='Analisi PDF in corso…';
+  pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  const pdf=await pdfjsLib.getDocument({data:await file.arrayBuffer()}).promise;let raw='',pages=[];
+  for(let p=1;p<=pdf.numPages;p++){const page=await pdf.getPage(p),content=await page.getTextContent();const items=content.items.filter(it=>it.str&&it.str.trim()).map(it=>({str:it.str,x:it.transform[4],y:it.transform[5],w:it.width||0,h:it.height||0}));pages.push(items);raw+=groupPdfItems(items).map(r=>r.items.map(i=>i.str).join('  ')).join('\n')+'\n'}
+  $('pdfRawText').value=raw;$('pdfTextPanel').classList.remove('hidden');
+  const mm=(file.name+' '+raw).match(/\b(jan|feb|mar|apr|may|mag|jun|giu|jul|lug|aug|ago|sep|set|oct|ott|nov|dec|dic)[a-z]*[- _](\d{2,4})\b/i);
+  if(mm){const m={jan:'01',feb:'02',mar:'03',apr:'04',may:'05',mag:'05',jun:'06',giu:'06',jul:'07',lug:'07',aug:'08',ago:'08',sep:'09',set:'09',oct:'10',ott:'10',nov:'11',dec:'12',dic:'12'}[mm[1].toLowerCase()];let y=mm[2];if(y.length===2)y='20'+y;if(m)$('pdfMonth').value=`${y}-${m}`}
+  const [year,mon]=$('pdfMonth').value.split('-').map(Number),days=new Date(year,mon,0).getDate(),result=parsePdfGeometry(pages,days);
+  previewRows=result.rows;previewDays=days;renderPreview();
+  $('pdfStatus').textContent=`PDF letto: ${pdf.numPages} pagina/e; ${result.rows.length} operatori riconosciuti. ${result.dayColumnsDetected?'Colonne giornaliere individuate.':'Colonne giornaliere non individuate con certezza.'} Verifica l’anteprima.`;
+  if(!result.rows.length)$('pdfStatus').textContent+=' Non è stato importato nulla: il formato potrebbe essere una scansione o differire dal modello.';
+ }catch(e){console.error(e);$('pdfStatus').textContent='Errore di lettura: '+(e&&e.message?e.message:'errore sconosciuto')}
+ finally{$('readPdf').disabled=false}
 };
 function renderPreview(){let root=$('previewTable');$('previewStats').textContent=`Operatori riconosciuti: ${previewRows.length} · Giorni previsti: ${previewDays}`;if(!previewRows.length){root.innerHTML='<p style="padding:12px">Nessun operatore riconosciuto automaticamente. Controlla il testo estratto oppure inviami il PDF per adattare il parser.</p>';return}root.innerHTML=`<table><thead><tr><th>ID</th><th>Cognome</th><th>Nome</th>${Array.from({length:previewDays},(_,i)=>`<th>${i+1}</th>`).join('')}<th>Copertura</th></tr></thead><tbody>${previewRows.map((o,i)=>`<tr><td><input data-i="${i}" data-k="id" value="${esc(o.id)}" style="width:70px"></td><td><input data-i="${i}" data-k="surname" value="${esc(o.surname)}" style="width:125px"></td><td><input data-i="${i}" data-k="name" value="${esc(o.name)}" style="width:125px"></td>${Array.from({length:previewDays},(_,j)=>`<td><input data-i="${i}" data-day="${j}" value="${esc(o.codes[j]||'')}" style="width:46px"></td>`).join('')}<td>${o.codes.filter(Boolean).length}/${previewDays}</td></tr>`).join('')}</tbody></table>`;root.querySelectorAll('input[data-i]').forEach(inp=>inp.onchange=()=>{let o=previewRows[Number(inp.dataset.i)];if(inp.dataset.k)o[inp.dataset.k]=inp.value;else if(inp.dataset.day!==undefined)o.codes[Number(inp.dataset.day)]=inp.value.trim().toUpperCase()})}
 $('pdfMonth').onchange=()=>{let [y,m]=$('pdfMonth').value.split('-').map(Number);previewDays=new Date(y,m,0).getDate();previewRows=previewRows.map(o=>({...o,codes:Array.from({length:previewDays},(_,i)=>o.codes[i]||'')}));renderPreview()};
