@@ -1,4 +1,4 @@
-# Calendario Turni v1.4
+# Calendario Turni v1.5
 
 Webapp in italiano per calendario personale e quadro generale degli operatori.
 
@@ -15,4 +15,4 @@ Webapp in italiano per calendario personale e quadro generale degli operatori.
 Carica i file nella radice del repository GitHub e abilita GitHub Pages da `main` / root.
 
 ## Limiti
-Il parser è adattato a prospetti PDF testuali con ID numerico, nome/cognome e codici come H14, R1, R2, FER, OFF. Il layout estratto dai PDF può variare: verificare sempre l'anteprima. I PDF scannerizzati richiedono OCR non incluso. La sincronizzazione cloud telefono-PC non è ancora attiva; per trasferire dati usa il backup JSON.
+Il parser è stato migliorato per prospetti come “nov-26”: riconosce ID numerici, cognomi/nome e sequenze giornaliere di codici (Hxx, R1, R2, FER e codici affini), con anteprima e indicazione di copertura. Il parsing resta da verificare caso per caso. Il layout estratto dai PDF può variare: verificare sempre l'anteprima. I PDF scannerizzati richiedono OCR non incluso. La sincronizzazione cloud telefono-PC non è ancora attiva; per trasferire dati usa il backup JSON.
