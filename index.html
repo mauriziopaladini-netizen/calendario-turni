@@ -479,13 +479,15 @@ function parseEmployeeLine(line,expectedDays){
  let shiftStart=-1;
  for(let i=1;i<tokens.length;i++){
   const tail=tokens.slice(i);
-  if(tail.length>=28 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=i;break;}
+  if(tail.length>=15 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=i;break;}
  }
  if(shiftStart<0){
   // Fallback: use the expected month length and validate the last N tokens.
-  if(expectedDays && tokens.length>=expectedDays+3){
-   const start=tokens.length-expectedDays;
-   if(tokens.slice(start).every(t=>SHIFT_RE.test(t)))shiftStart=start;
+  if(expectedDays && tokens.length>=Math.min(expectedDays,15)+3){
+   for(let start=3;start<tokens.length;start++){
+    const tail=tokens.slice(start);
+    if(tail.length>=15 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=start;break;}
+   }
   }
  }
  if(shiftStart<3)return null;
@@ -496,43 +498,74 @@ function parseEmployeeLine(line,expectedDays){
  const cognome=nameTokens.join(' ');
  return {id,cognome,nome,shifts,sourceLine:line};
 }
+function detectVisibleDayCount(lines, expectedDays){
+ // Prefer the explicit day-number header (e.g. "ott-26 1 2 ... 24") over
+ // the calendar's theoretical month length: some operational rosters omit columns intentionally.
+ let best=0;
+ for(const line of lines){
+  const tokens=tokenize(line);
+  if(!tokens.some(t=>/^(?:ID|Cognome|Nome)$/i.test(t))) {
+   const nums=tokens.map(t=>/^\d{1,2}$/.test(t)?Number(t):null).filter(n=>n!==null);
+   let run=0, prev=null;
+   for(const n of nums){
+    if(n===1){run=1;prev=1;continue;}
+    if(prev!==null && n===prev+1){run++;prev=n;best=Math.max(best,run);}
+    else {run=0;prev=null;}
+   }
+  }
+ }
+ if(best>=15)return best;
+ // Fallback: use the most common employee row length, which also supports headers
+ // that PDF.js extracts in separate text fragments.
+ const lengths=[];
+ for(const line of lines){const e=parseEmployeeLine(line,expectedDays);if(e)lengths.push(e.shifts.length)}
+ if(lengths.length){const counts={};for(const n of lengths)counts[n]=(counts[n]||0)+1;return Number(Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0]);}
+ return expectedDays||31;
+}
 function parseSchedule(text,filename){
  const date=detectMonthYear(text,filename);
  const expectedDays=date.monthIndex!==null&&date.year?new Date(date.year,date.monthIndex+1,0).getDate():null;
  const lines=text.split(/\n/).map(s=>s.trim()).filter(Boolean);
+ const visibleDays=detectVisibleDayCount(lines,expectedDays);
  const employees=[];
  for(const line of lines){
-  const emp=parseEmployeeLine(line,expectedDays);
+  const emp=parseEmployeeLine(line,visibleDays);
   if(emp)employees.push(emp);
  }
- // Remove duplicate rows if PDF text extraction generated overlapping baselines.
- const unique=[], seen=new Set();
- for(const e of employees){const k=e.id;if(!seen.has(k)){seen.add(k);unique.push(e)}}
+ // Deduplicate employees repeated across pages, preferring the row with the most shifts.
+ const byId=new Map();
+ for(const e of employees){const old=byId.get(e.id);if(!old||e.shifts.length>old.shifts.length)byId.set(e.id,e)}
+ const unique=[...byId.values()];
  if(!unique.length){
-  showStatus('Non ho riconosciuto righe dipendente. Questo PDF potrebbe avere una struttura diversa o essere una scansione. Apri “Testo estratto” per verificare.', 'error');
+  showStatus('Non ho riconosciuto righe dipendente. Apri “Testo estratto” per controllare la struttura del PDF.', 'error');
   dataset.employees=[];renderMatrix();return;
  }
- const maxDays=expectedDays||Math.max(...unique.map(e=>e.shifts.length));
+ const maxDays=Math.min(31,Math.max(visibleDays,...unique.map(e=>e.shifts.length)));
+ // Keep a fixed day slot for every visible day. If a row is short, do not shift its
+ // later values: mark missing cells explicitly instead of fabricating codes.
+ for(const emp of unique){
+  if(emp.shifts.length<maxDays)emp.shifts=emp.shifts.concat(Array(maxDays-emp.shifts.length).fill(''));
+  if(emp.shifts.length>maxDays)emp.shifts=emp.shifts.slice(0,maxDays);
+ }
  dataset={...dataset,monthIndex:date.monthIndex,year:date.year,monthLabel:date.monthIndex!==null?(MONTH_NAMES[date.monthIndex]+(date.year?' '+date.year:'')):'Mese non identificato',days:Array.from({length:maxDays},(_,i)=>i+1),employees:unique,modifications:{}};
  selectedIds.clear();onlySelected=false;
  document.getElementById('selectedOnly').classList.remove('bg-blue-100');
  document.getElementById('statEmployees').textContent=unique.length;
  document.getElementById('statDays').textContent=maxDays;
  document.getElementById('statMonth').textContent=dataset.monthLabel;
- document.getElementById('matrixSubtitle').textContent=dataset.monthLabel+' · '+unique.length+' dipendenti';
+ document.getElementById('matrixSubtitle').textContent=dataset.monthLabel+' · '+unique.length+' dipendenti · '+maxDays+' giorni presenti nel PDF';
  document.getElementById('calendarSubtitle').textContent=dataset.monthLabel;
  document.getElementById('warnings').innerHTML='';
- const issues=unique.filter(e=>e.shifts.length!==maxDays);
- if(issues.length){
-  const div=document.createElement('div');div.className='rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-900';
-  div.textContent='Attenzione: '+issues.length+' righe hanno un numero di turni diverso dai '+maxDays+' giorni previsti. Controllare: '+issues.slice(0,8).map(e=>e.cognome+' '+e.nome+' ('+e.shifts.length+')').join(', ')+(issues.length>8?'…':'');
-  document.getElementById('warnings').appendChild(div);
- }else{
-  document.getElementById('warnings').textContent='Controllo strutturale superato: tutte le righe riconosciute hanno '+maxDays+' codici turno. Confronta comunque i dati con il PDF originale.';
- }
+ const rowIssues=unique.filter(e=>e.shifts.filter(Boolean).length!==maxDays);
+ const notes=[];
+ if(expectedDays&&maxDays<expectedDays)notes.push('Il PDF contiene '+maxDays+' giorni su '+expectedDays+' del mese: i giorni non presenti nel documento non sono stati inventati.');
+ if(rowIssues.length)notes.push(rowIssues.length+' righe hanno celle vuote o un numero di codici diverso dalle colonne riconosciute: controllarle nell’anteprima.');
+ const div=document.createElement('div');
+ if(notes.length){div.className='rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-900';div.textContent=notes.join(' ');document.getElementById('warnings').appendChild(div)}
+ else {document.getElementById('warnings').textContent='Struttura riconosciuta: '+maxDays+' giorni e '+unique.length+' dipendenti. Confronta comunque i dati con il PDF originale.';}
  populateEmployeeSelect();
  renderMatrix();renderCalendar();renderNextShift();renderPersonalSummary();
- showStatus('Importazione completata: '+unique.length+' dipendenti rilevati. Verifica i turni rispetto al PDF originale.', 'success');
+ showStatus('Importazione completata: '+unique.length+' dipendenti rilevati e '+maxDays+' giorni presenti nel prospetto. Verifica i dati rispetto al PDF originale.', 'success');
  saveCurrentMonth(false);
  setView('matrix');
 }

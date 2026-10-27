@@ -49,3 +49,8 @@ VERSIONE 7 - MODIFICHE PERSONALIZZATE DEL CALENDARIO
 - Le modifiche sono salvate nell'archivio mensile locale e incluse nel backup JSON.
 - Calendario personale, riepilogo e esportazione ICS utilizzano il turno modificato. Il tabellone generale e il CSV continuano a rappresentare i codici originali del PDF.
 - Lo stato 'approvato' è una registrazione manuale e non una verifica ufficiale.
+
+
+CORREZIONE v8 - PDF CON 24 COLONNE
+- Il lettore accetta righe dipendente con 20 o più codici turno invece di richiedere almeno 28.
+- Il calendario mostra solo i giorni effettivamente presenti nel PDF. Se il mese ha più giorni, mostra un avviso esplicito e non inventa i codici mancanti.
