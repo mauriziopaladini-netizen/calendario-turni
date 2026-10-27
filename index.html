@@ -44,6 +44,20 @@ body.theme-dark .shift-fer{background:#7f1d1d;color:#fee2e2}
 body.theme-dark .shift-off{background:#14532d;color:#dcfce7}
 body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
 
+ 
+@media print {
+ body * { visibility: hidden !important; }
+ #view-calendar, #view-calendar * { visibility: visible !important; }
+ #view-calendar { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
+ #view-calendar .no-print, #view-calendar button, #view-calendar label, #view-calendar select { display: none !important; }
+ #view-calendar .shadow-sm { box-shadow: none !important; }
+ #calendarGrid { display: grid !important; grid-template-columns: repeat(7,minmax(0,1fr)) !important; gap: 3px !important; }
+ #calendarGrid > div { min-height: 70px !important; break-inside: avoid !important; border: 1px solid #999 !important; color: #111 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+ #view-calendar h2, #calendarSubtitle { color: #111 !important; }
+ header, footer, .bottom-nav { display: none !important; }
+ @page { size: A4 portrait; margin: 10mm; }
+}
+
 </style>
 </head>
 <body class="min-h-screen text-slate-800">
@@ -158,9 +172,27 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
      </select>
     </label>
    </div>
+   <div class="mt-4 border-t pt-4 space-y-3 no-print">
+    <h3 class="font-bold">Archivio dei miei turni</h3>
+    <div class="flex flex-wrap gap-2 items-center">
+     <label class="text-sm font-semibold">Mese archiviato
+      <select id="archiveMonthSelect" class="ml-2 border rounded-lg px-3 py-2"><option value="">Nessun mese archiviato</option></select>
+     </label>
+     <button id="loadArchiveMonth" class="rounded-lg border px-3 py-2 font-semibold">Apri mese</button>
+     <button id="saveArchiveMonth" class="rounded-lg bg-emerald-600 text-white px-3 py-2 font-semibold">Salva mese attuale</button>
+     <button id="deleteArchiveMonth" class="rounded-lg border border-red-300 text-red-700 px-3 py-2">Elimina mese</button>
+    </div>
+    <div class="flex flex-wrap gap-2 items-center">
+     <button id="exportBackup" class="rounded-lg bg-slate-800 text-white px-3 py-2 font-semibold">Esporta backup</button>
+     <label for="importBackupFile" class="cursor-pointer rounded-lg border px-3 py-2 font-semibold">Ripristina backup</label>
+     <input id="importBackupFile" type="file" accept=".json,application/json" class="hidden">
+     <span class="text-xs text-slate-500">Archivio salvato in questo browser. Fai un backup per trasferire i mesi su un altro dispositivo.</span>
+    </div>
+   </div>
   </div>
   <div class="bg-white rounded-2xl p-3 md:p-5 shadow-sm max-w-4xl mx-auto">
-   <div class="flex justify-end mb-3 no-print">
+   <div class="flex flex-wrap justify-end gap-2 mb-3 no-print">
+    <button id="printCalendar" class="rounded-lg bg-slate-800 hover:bg-slate-900 text-white px-4 py-2 font-semibold">🖨️ Stampa calendario</button>
     <button id="exportIcs" class="rounded-lg bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 font-semibold">Esporta calendario (.ics)</button>
    </div>
    <div id="calendarGrid" class="grid grid-cols-7 gap-1"></div>
@@ -240,6 +272,111 @@ document.getElementById('shiftDisplayMode').addEventListener('change',e=>{displa
 document.getElementById('calendarDisplayMode').addEventListener('change',e=>{displayMode=e.target.value;document.getElementById('shiftDisplayMode').value=displayMode;renderMatrix();renderCalendar()});
 document.getElementById('exportCsv').addEventListener('click',exportCSV);
 document.getElementById('exportIcs').addEventListener('click',exportICS);
+document.getElementById('printCalendar').addEventListener('click',()=>window.print());
+document.getElementById('saveArchiveMonth').addEventListener('click',()=>saveCurrentMonth(true));
+document.getElementById('loadArchiveMonth').addEventListener('click',loadSelectedArchiveMonth);
+document.getElementById('deleteArchiveMonth').addEventListener('click',deleteSelectedArchiveMonth);
+document.getElementById('exportBackup').addEventListener('click',exportArchiveBackup);
+document.getElementById('importBackupFile').addEventListener('change',importArchiveBackup);
+refreshArchiveSelect();
+
+
+const ARCHIVE_KEY='gestionale-turni-archive-v1';
+function readArchive(){
+ try{const raw=localStorage.getItem(ARCHIVE_KEY);return raw?JSON.parse(raw):{}}
+ catch(e){return {}}
+}
+function writeArchive(archive){
+ try{localStorage.setItem(ARCHIVE_KEY,JSON.stringify(archive));return true}
+ catch(e){showStatus('Impossibile salvare l’archivio: spazio browser insufficiente o memoria non disponibile. Esporta un backup e libera spazio.','error');return false}
+}
+function archiveKeyFor(data=dataset){
+ if(data.year&&data.monthIndex!==null&&data.monthIndex!==undefined)return String(data.year)+'-'+String(data.monthIndex+1).padStart(2,'0');
+ return '';
+}
+function archiveLabel(key,item){
+ const d=item&&item.dataset||{};
+ return d.monthLabel||key;
+}
+function refreshArchiveSelect(selectKey=''){
+ const sel=document.getElementById('archiveMonthSelect');if(!sel)return;
+ const archive=readArchive();const keys=Object.keys(archive).sort().reverse();
+ sel.innerHTML='';
+ if(!keys.length){const o=document.createElement('option');o.value='';o.textContent='Nessun mese archiviato';sel.appendChild(o);return}
+ keys.forEach(key=>{const o=document.createElement('option');o.value=key;o.textContent=archiveLabel(key,archive[key]);sel.appendChild(o)});
+ const current=selectKey||archiveKeyFor();
+ if(current&&archive[current])sel.value=current;
+}
+function saveCurrentMonth(showMessage=true){
+ if(!dataset.employees||!dataset.employees.length){if(showMessage)showStatus('Carica prima un PDF valido.','error');return false}
+ const key=archiveKeyFor();
+ if(!key){if(showMessage)showStatus('Non posso archiviare il mese perché mese o anno non sono stati riconosciuti.','error');return false}
+ const archive=readArchive();
+ archive[key]={savedAt:new Date().toISOString(),fileName:document.getElementById('fileName').textContent||'',dataset:{
+  monthIndex:dataset.monthIndex,year:dataset.year,monthLabel:dataset.monthLabel,
+  days:dataset.days,employees:dataset.employees,rawText:dataset.rawText||''
+ }};
+ if(!writeArchive(archive))return false;
+ refreshArchiveSelect(key);
+ if(showMessage)showStatus('Mese '+archive[key].dataset.monthLabel+' salvato nell’archivio del browser. Esporta periodicamente un backup per sicurezza.','success');
+ return true;
+}
+function loadSelectedArchiveMonth(){
+ const key=document.getElementById('archiveMonthSelect').value,archive=readArchive(),item=archive[key];
+ if(!item||!item.dataset){showStatus('Seleziona un mese valido nell’archivio.','error');return}
+ const preferred=(()=>{try{return localStorage.getItem('turni-preferred-employee')||''}catch(e){return ''}})();
+ dataset={...item.dataset};
+ document.getElementById('fileName').textContent=item.fileName||('Archivio '+key);
+ document.getElementById('rawText').textContent=dataset.rawText||'';
+ document.getElementById('statEmployees').textContent=dataset.employees.length;
+ document.getElementById('statDays').textContent=dataset.days.length;
+ document.getElementById('statMonth').textContent=dataset.monthLabel;
+ document.getElementById('matrixSubtitle').textContent=dataset.monthLabel+' · '+dataset.employees.length+' dipendenti';
+ document.getElementById('calendarSubtitle').textContent=dataset.monthLabel;
+ document.getElementById('warnings').textContent='Mese caricato dall’archivio locale. Confronta i dati con il PDF originale.';
+ selectedIds.clear();onlySelected=false;
+ document.getElementById('selectedOnly').classList.remove('bg-blue-100');
+ populateEmployeeSelect();
+ if(dataset.employees.some(e=>e.id===preferred)){document.getElementById('employeeSelect').value=preferred;document.getElementById('myEmployeeSelect').value=preferred}
+ renderMatrix();renderCalendar();renderNextShift();renderPersonalSummary();setView('calendar');
+ showStatus('Archivio caricato: '+dataset.monthLabel+'.','success');
+}
+function deleteSelectedArchiveMonth(){
+ const sel=document.getElementById('archiveMonthSelect'),key=sel.value;
+ if(!key){showStatus('Seleziona prima un mese da eliminare.','error');return}
+ if(!confirm('Eliminare il mese '+archiveLabel(key,readArchive()[key])+' dall’archivio locale? Questa azione non si può annullare senza un backup.'))return;
+ const archive=readArchive();delete archive[key];
+ if(writeArchive(archive)){refreshArchiveSelect();showStatus('Mese eliminato dall’archivio locale.','success')}
+}
+function downloadBlob(content,type,name){
+ const blob=new Blob([content],{type});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+function exportArchiveBackup(){
+ const payload={format:'GestionaleTurniPRO-backup-v1',createdAt:new Date().toISOString(),preferredEmployee:(()=>{try{return localStorage.getItem('turni-preferred-employee')||''}catch(e){return ''}})(),archive:readArchive()};
+ downloadBlob(JSON.stringify(payload,null,2),'application/json','backup-gestionale-turni-'+new Date().toISOString().slice(0,10)+'.json');
+ showStatus('Backup esportato. Conserva il file JSON in un luogo sicuro.','success');
+}
+function importArchiveBackup(event){
+ const file=event.target.files&&event.target.files[0];if(!file)return;
+ const reader=new FileReader();
+ reader.onload=()=>{
+  try{
+   const payload=JSON.parse(String(reader.result||''));
+   if(payload.format!=='GestionaleTurniPRO-backup-v1'||!payload.archive||typeof payload.archive!=='object')throw new Error('Formato backup non riconosciuto.');
+   const existing=readArchive(),merged={...existing};
+   for(const [key,item] of Object.entries(payload.archive)){
+    if(/^\d{4}-\d{2}$/.test(key)&&item&&item.dataset&&Array.isArray(item.dataset.employees))merged[key]=item;
+   }
+   if(!writeArchive(merged))return;
+   if(payload.preferredEmployee){try{localStorage.setItem('turni-preferred-employee',payload.preferredEmployee)}catch(e){}}
+   refreshArchiveSelect();
+   showStatus('Backup ripristinato: '+Object.keys(payload.archive).length+' mesi trovati nel file. I mesi importati sono stati aggiunti all’archivio.','success');
+  }catch(err){showStatus('Backup non valido: '+(err.message||err),'error')}
+  event.target.value='';
+ };
+ reader.onerror=()=>showStatus('Non riesco a leggere il file di backup.','error');
+ reader.readAsText(file);
+}
 
 async function handlePDFUpload(event){
  const file=event.target.files?.[0]; if(!file)return;
@@ -353,6 +490,7 @@ function parseSchedule(text,filename){
  populateEmployeeSelect();
  renderMatrix();renderCalendar();renderNextShift();renderPersonalSummary();
  showStatus('Importazione completata: '+unique.length+' dipendenti rilevati. Verifica i turni rispetto al PDF originale.', 'success');
+ saveCurrentMonth(false);
  setView('matrix');
 }
 function shiftClass(code){

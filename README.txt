@@ -30,3 +30,12 @@ VERSIONE 5 - PROFILO PERSONALE
 - Scelta del nominativo personale salvata sul dispositivo.
 - Riepilogo mensile: turni H riconosciuti, ore stimate (8 per turno), riposi R1/R2/RZ e giorni FER/OFF.
 - Le statistiche sono indicative e vanno confrontate con il PDF originale.
+
+
+VERSIONE 6 - STAMPA E ARCHIVIO MENSILE
+- Pulsante Stampa calendario con impaginazione A4.
+- Archivio locale per mese: ogni PDF importato correttamente viene archiviato automaticamente quando mese e anno sono riconosciuti.
+- Possibilità di aprire un mese archiviato, salvarlo manualmente o eliminarlo.
+- Esportazione e ripristino backup JSON; il ripristino unisce i mesi del backup a quelli già presenti.
+- Il nominativo preferito resta salvato nel browser. Per trasferire lo storico su un altro dispositivo, esporta il backup e ripristinalo lì.
+- L'archivio usa la memoria locale del browser: esporta backup periodici, perché cancellare i dati del sito può cancellare l'archivio.
