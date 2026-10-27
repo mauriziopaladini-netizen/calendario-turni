@@ -39,3 +39,13 @@ VERSIONE 6 - STAMPA E ARCHIVIO MENSILE
 - Esportazione e ripristino backup JSON; il ripristino unisce i mesi del backup a quelli già presenti.
 - Il nominativo preferito resta salvato nel browser. Per trasferire lo storico su un altro dispositivo, esporta il backup e ripristinalo lì.
 - L'archivio usa la memoria locale del browser: esporta backup periodici, perché cancellare i dati del sito può cancellare l'archivio.
+
+
+VERSIONE 7 - MODIFICHE PERSONALIZZATE DEL CALENDARIO
+- Clic/tocco su una casella del calendario per modificare il codice turno.
+- Il codice originale del PDF resta intatto; le modifiche vengono conservate separatamente per dipendente e giorno.
+- Stato modifica: da verificare o approvato manualmente dopo aver ricevuto conferma.
+- Ripristino del turno originale disponibile dal pannello di modifica.
+- Le modifiche sono salvate nell'archivio mensile locale e incluse nel backup JSON.
+- Calendario personale, riepilogo e esportazione ICS utilizzano il turno modificato. Il tabellone generale e il CSV continuano a rappresentare i codici originali del PDF.
+- Lo stato 'approvato' è una registrazione manuale e non una verifica ufficiale.

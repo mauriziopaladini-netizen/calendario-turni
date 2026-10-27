@@ -49,7 +49,7 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
  body * { visibility: hidden !important; }
  #view-calendar, #view-calendar * { visibility: visible !important; }
  #view-calendar { display: block !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 100% !important; padding: 0 !important; margin: 0 !important; }
- #view-calendar .no-print, #view-calendar button, #view-calendar label, #view-calendar select { display: none !important; }
+ #view-calendar .no-print, #view-calendar label, #view-calendar select, #printCalendar, #exportIcs, #shiftEditor { display: none !important; }
  #view-calendar .shadow-sm { box-shadow: none !important; }
  #calendarGrid { display: grid !important; grid-template-columns: repeat(7,minmax(0,1fr)) !important; gap: 3px !important; }
  #calendarGrid > div { min-height: 70px !important; break-inside: avoid !important; border: 1px solid #999 !important; color: #111 !important; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -211,6 +211,38 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
    <pre id="rawText" class="mt-4 p-3 bg-slate-950 text-green-100 rounded-xl text-xs whitespace-pre-wrap overflow-auto max-h-[65vh]"></pre>
   </div>
  </section>
+ <div id="shiftEditor" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/60 p-3 no-print" role="dialog" aria-modal="true" aria-labelledby="shiftEditorTitle">
+  <div class="w-full max-w-md rounded-2xl bg-white p-5 shadow-2xl space-y-4">
+   <div class="flex items-start justify-between gap-3">
+    <div><h2 id="shiftEditorTitle" class="text-xl font-bold">Modifica turno</h2><p id="shiftEditorSubtitle" class="text-sm text-slate-500"></p></div>
+    <button id="closeShiftEditor" type="button" class="rounded-lg border px-3 py-1" aria-label="Chiudi">✕</button>
+   </div>
+   <div class="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+    Il codice originale del PDF rimane conservato. La modifica è personale e non sostituisce l'approvazione ufficiale dello scambio.
+   </div>
+   <div class="space-y-1">
+    <label for="editShiftCode" class="block text-sm font-semibold">Nuovo codice turno</label>
+    <select id="editShiftCode" class="w-full border rounded-lg px-3 py-2">
+     <option>H10</option><option>H12</option><option>H14</option><option>H16</option><option>H18</option><option>H20</option><option>H22</option><option>H24</option><option>H26</option><option>H28</option><option>H30</option><option>R1</option><option>R2</option><option>RZ</option><option>FER</option><option>TRN</option><option>OFF</option><option value="__custom">Altro codice…</option>
+    </select>
+    <input id="editShiftCustom" class="hidden w-full border rounded-lg px-3 py-2 mt-2" placeholder="Inserisci codice (es. H08)" maxlength="12" />
+   </div>
+   <div class="space-y-1">
+    <label for="editShiftStatus" class="block text-sm font-semibold">Stato dello scambio</label>
+    <select id="editShiftStatus" class="w-full border rounded-lg px-3 py-2">
+     <option value="pending">Da verificare</option>
+     <option value="approved">Approvato (conferma ricevuta)</option>
+    </select>
+   </div>
+   <div class="flex flex-wrap gap-2 justify-between pt-2">
+    <button id="resetShiftEdit" type="button" class="rounded-lg border border-red-300 text-red-700 px-3 py-2">Ripristina originale</button>
+    <div class="flex gap-2 ml-auto">
+     <button id="cancelShiftEdit" type="button" class="rounded-lg border px-3 py-2">Annulla</button>
+     <button id="saveShiftEdit" type="button" class="rounded-lg bg-blue-600 text-white px-4 py-2 font-semibold">Salva modifica</button>
+    </div>
+   </div>
+  </div>
+ </div>
  <footer class="text-center text-xs text-slate-500 py-4">I dati vengono elaborati nel browser. Verifica sempre il tabellone rispetto al PDF originale.</footer>
 </main>
 <nav class="bottom-nav no-print md:hidden" aria-label="Navigazione principale">
@@ -229,7 +261,7 @@ const MONTHS={gennaio:0,gen:0,febbraio:1,feb:1,marzo:2,mar:2,aprile:3,apr:3,magg
 const MONTH_NAMES=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const WEEKDAYS=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 const SHIFT_RE=/^(?:H\d{2}|R1|R2|RZ|FER|TRN|OFF|81|82|M10|\d{1,2})$/i;
-let dataset={monthIndex:null,year:null,monthLabel:'',days:[],employees:[],rawText:''};
+let dataset={monthIndex:null,year:null,monthLabel:'',days:[],employees:[],rawText:'',modifications:{}};
 let selectedIds=new Set(), onlySelected=false;
 let displayMode='code';
 const SHIFT_HOURS=8;
@@ -272,6 +304,17 @@ document.getElementById('shiftDisplayMode').addEventListener('change',e=>{displa
 document.getElementById('calendarDisplayMode').addEventListener('change',e=>{displayMode=e.target.value;document.getElementById('shiftDisplayMode').value=displayMode;renderMatrix();renderCalendar()});
 document.getElementById('exportCsv').addEventListener('click',exportCSV);
 document.getElementById('exportIcs').addEventListener('click',exportICS);
+document.getElementById('closeShiftEditor').addEventListener('click',closeShiftEditor);
+document.getElementById('cancelShiftEdit').addEventListener('click',closeShiftEditor);
+document.getElementById('saveShiftEdit').addEventListener('click',saveShiftEdit);
+document.getElementById('resetShiftEdit').addEventListener('click',resetShiftEdit);
+document.getElementById('editShiftCode').addEventListener('change',()=>{
+ const custom=document.getElementById('editShiftCustom');
+ const isCustom=document.getElementById('editShiftCode').value==='__custom';
+ custom.classList.toggle('hidden',!isCustom);if(isCustom)custom.focus();
+});
+document.getElementById('shiftEditor').addEventListener('click',e=>{if(e.target.id==='shiftEditor')closeShiftEditor()});
+
 document.getElementById('printCalendar').addEventListener('click',()=>window.print());
 document.getElementById('saveArchiveMonth').addEventListener('click',()=>saveCurrentMonth(true));
 document.getElementById('loadArchiveMonth').addEventListener('click',loadSelectedArchiveMonth);
@@ -314,7 +357,7 @@ function saveCurrentMonth(showMessage=true){
  const archive=readArchive();
  archive[key]={savedAt:new Date().toISOString(),fileName:document.getElementById('fileName').textContent||'',dataset:{
   monthIndex:dataset.monthIndex,year:dataset.year,monthLabel:dataset.monthLabel,
-  days:dataset.days,employees:dataset.employees,rawText:dataset.rawText||''
+  days:dataset.days,employees:dataset.employees,rawText:dataset.rawText||'',modifications:dataset.modifications||{}
  }};
  if(!writeArchive(archive))return false;
  refreshArchiveSelect(key);
@@ -325,7 +368,7 @@ function loadSelectedArchiveMonth(){
  const key=document.getElementById('archiveMonthSelect').value,archive=readArchive(),item=archive[key];
  if(!item||!item.dataset){showStatus('Seleziona un mese valido nell’archivio.','error');return}
  const preferred=(()=>{try{return localStorage.getItem('turni-preferred-employee')||''}catch(e){return ''}})();
- dataset={...item.dataset};
+ dataset={...item.dataset,modifications:item.dataset.modifications||{}};
  document.getElementById('fileName').textContent=item.fileName||('Archivio '+key);
  document.getElementById('rawText').textContent=dataset.rawText||'';
  document.getElementById('statEmployees').textContent=dataset.employees.length;
@@ -470,7 +513,7 @@ function parseSchedule(text,filename){
   dataset.employees=[];renderMatrix();return;
  }
  const maxDays=expectedDays||Math.max(...unique.map(e=>e.shifts.length));
- dataset={...dataset,monthIndex:date.monthIndex,year:date.year,monthLabel:date.monthIndex!==null?(MONTH_NAMES[date.monthIndex]+(date.year?' '+date.year:'')):'Mese non identificato',days:Array.from({length:maxDays},(_,i)=>i+1),employees:unique};
+ dataset={...dataset,monthIndex:date.monthIndex,year:date.year,monthLabel:date.monthIndex!==null?(MONTH_NAMES[date.monthIndex]+(date.year?' '+date.year:'')):'Mese non identificato',days:Array.from({length:maxDays},(_,i)=>i+1),employees:unique,modifications:{}};
  selectedIds.clear();onlySelected=false;
  document.getElementById('selectedOnly').classList.remove('bg-blue-100');
  document.getElementById('statEmployees').textContent=unique.length;
@@ -545,7 +588,7 @@ function renderPersonalSummary(){
  }
  const id=document.getElementById('employeeSelect').value||document.getElementById('myEmployeeSelect').value||dataset.employees[0].id;
  const emp=dataset.employees.find(e=>e.id===id)||dataset.employees[0];
- const codes=emp.shifts.map(x=>String(x||'').toUpperCase());
+ const codes=emp.shifts.map((x,i)=>String(effectiveShift(emp,i)||'').toUpperCase());
  const work=codes.filter(c=>/^H\d{2}$/.test(c)).length;
  const rest=codes.filter(c=>['R1','R2','RZ'].includes(c)).length;
  const leave=codes.filter(c=>['FER','OFF'].includes(c)).length;
@@ -555,6 +598,67 @@ function renderPersonalSummary(){
  document.getElementById('personalRestDays').textContent=rest;
  document.getElementById('personalLeaveDays').textContent=leave;
 }
+
+let editingShift=null;
+function getShiftEdit(emp,day){
+ const byEmp=(dataset.modifications||{})[String(emp.id)]||{};
+ return byEmp[String(day)]||null;
+}
+function effectiveShift(emp,index){
+ const day=index+1,edit=getShiftEdit(emp,day);
+ return edit?edit.code:(emp.shifts[index]||'—');
+}
+function openShiftEditor(day,employeeId){
+ const emp=dataset.employees.find(e=>String(e.id)===String(employeeId));
+ if(!emp)return;
+ const original=emp.shifts[day-1]||'—',edit=getShiftEdit(emp,day);
+ editingShift={day,employeeId:String(emp.id),original};
+ document.getElementById('shiftEditorTitle').textContent='Modifica turno · giorno '+day;
+ document.getElementById('shiftEditorSubtitle').textContent=emp.cognome+' '+emp.nome+' · '+(dataset.monthLabel||'mese non identificato')+' · Originale PDF: '+original;
+ const select=document.getElementById('editShiftCode');
+ const current=edit?edit.code:original;
+ if([...select.options].some(o=>o.value===current)){select.value=current;document.getElementById('editShiftCustom').classList.add('hidden')}
+ else{select.value='__custom';document.getElementById('editShiftCustom').classList.remove('hidden');document.getElementById('editShiftCustom').value=current}
+ document.getElementById('editShiftStatus').value=edit?edit.status:'pending';
+ document.getElementById('shiftEditor').classList.remove('hidden');document.getElementById('shiftEditor').classList.add('flex');
+}
+function closeShiftEditor(){
+ document.getElementById('shiftEditor').classList.add('hidden');document.getElementById('shiftEditor').classList.remove('flex');editingShift=null;
+}
+function saveShiftEdit(){
+ if(!editingShift)return;
+ const select=document.getElementById('editShiftCode');
+ let code=select.value==='__custom'?document.getElementById('editShiftCustom').value.trim().toUpperCase():select.value;
+ if(!code||code==='__custom'||!/^[A-Z0-9_-]{1,12}$/.test(code)){showStatus('Inserisci un codice valido (lettere e numeri, massimo 12 caratteri).','error');return}
+ const {day,employeeId,original}=editingShift;
+ const emp=dataset.employees.find(e=>String(e.id)===employeeId);
+ if(!emp)return;
+ if(code===original){
+  if(dataset.modifications&&dataset.modifications[employeeId])delete dataset.modifications[employeeId][String(day)];
+  if(dataset.modifications&&dataset.modifications[employeeId]&&!Object.keys(dataset.modifications[employeeId]).length)delete dataset.modifications[employeeId];
+ }else{
+  if(!dataset.modifications)dataset.modifications={};
+  if(!dataset.modifications[employeeId])dataset.modifications[employeeId]={};
+  const existing=getShiftEdit(emp,day);
+  dataset.modifications[employeeId][String(day)]={original,code,status:document.getElementById('editShiftStatus').value,updatedAt:new Date().toISOString(),previousStatus:existing?existing.status:null};
+ }
+ const monthKey=archiveKeyFor();
+ if(monthKey)saveCurrentMonth(false);
+ closeShiftEditor();renderCalendar();renderNextShift();renderPersonalSummary();
+ showStatus(code===original?'Turno originale ripristinato.':'Turno modificato in '+code+'. '+(document.getElementById('editShiftStatus').value==='approved'?'Segnato come approvato.':'Segnato come da verificare.'),'success');
+}
+function resetShiftEdit(){
+ if(!editingShift)return;
+ const {day,employeeId}=editingShift;
+ if(dataset.modifications&&dataset.modifications[employeeId]){
+  delete dataset.modifications[employeeId][String(day)];
+  if(!Object.keys(dataset.modifications[employeeId]).length)delete dataset.modifications[employeeId];
+ }
+ if(archiveKeyFor())saveCurrentMonth(false);
+ closeShiftEditor();renderCalendar();renderNextShift();renderPersonalSummary();
+ showStatus('Turno originale del PDF ripristinato.','success');
+}
+
 function renderCalendar(){
  const grid=document.getElementById('calendarGrid');grid.innerHTML='';
  if(!dataset.employees.length){grid.textContent='Carica prima un PDF.';return}
@@ -566,11 +670,14 @@ function renderCalendar(){
  if(dataset.monthIndex!==null&&dataset.year){const d=new Date(dataset.year,dataset.monthIndex,1).getDay();offset=(d+6)%7;}
  for(let i=0;i<offset;i++){const blank=document.createElement('div');blank.className='min-h-16 md:min-h-24';grid.appendChild(blank)}
  for(const day of dataset.days){
-  const code=emp.shifts[day-1]||'—';const label=displayShift(code);const cell=document.createElement('div');
-  cell.className='min-h-16 md:min-h-24 rounded border p-1 md:p-2 flex flex-col '+calendarClass(code);
+  const original=emp.shifts[day-1]||'—',edit=getShiftEdit(emp,day),code=effectiveShift(emp,day-1),label=displayShift(code);const cell=document.createElement('button');
+  cell.type='button';cell.title='Modifica turno del giorno '+day;cell.setAttribute('aria-label','Modifica giorno '+day+', turno '+code);
+  cell.className='text-left min-h-16 md:min-h-24 rounded border p-1 md:p-2 flex flex-col '+calendarClass(code)+' hover:ring-2 hover:ring-blue-400 focus:ring-2 focus:ring-blue-500 '+(edit?(edit.status==='approved'?'ring-2 ring-emerald-500':'ring-2 ring-amber-400'):'');
   const n=document.createElement('span');n.className='text-xs text-slate-600 font-semibold';n.textContent=day;
   const c=document.createElement('span');c.className='m-auto text-xs md:text-sm font-extrabold text-center break-words';c.textContent=label;
-  cell.append(n,c);grid.appendChild(cell);
+  cell.append(n,c);
+  if(edit){const badge=document.createElement('span');badge.className='text-[9px] font-bold text-center '+(edit.status==='approved'?'text-emerald-800':'text-amber-800');badge.textContent=edit.status==='approved'?'✓ Approvato':'! Da verificare';cell.appendChild(badge);const small=document.createElement('span');small.className='text-[9px] text-center text-slate-600';small.textContent='Orig. '+original;cell.appendChild(small)}
+  cell.addEventListener('click',()=>openShiftEditor(day,emp.id));grid.appendChild(cell);
  }
 }
 function calendarClass(code){
@@ -591,7 +698,7 @@ function renderNextShift(){
  const emp=selectedCalendarEmployee()||dataset.employees[0];
  const now=new Date(); let found=null;
  for(let i=0;i<dataset.days.length;i++){
-  const code=emp.shifts[i]||'';
+  const code=effectiveShift(emp,i)||'';
   const hour=shiftStartHour(code);
   if(hour===null)continue;
   const mins=Math.round(hour*60);
@@ -638,14 +745,19 @@ function icsDate(date){
 function icsDateTime(date){
  return icsDate(date)+'T'+String(date.getHours()).padStart(2,'0')+String(date.getMinutes()).padStart(2,'0')+'00';
 }
+function icsEditDescription(emp,index,code){
+ const edit=getShiftEdit(emp,index+1);
+ if(!edit)return 'Codice turno: '+code+' (da PDF)';
+ return 'Codice originale: '+edit.original+'; codice personalizzato: '+edit.code+'; stato: '+(edit.status==='approved'?'approvato manualmente':'da verificare');
+}
 function exportICS(){
  const emp=selectedCalendarEmployee();
  if(!emp){showStatus('Carica un PDF e seleziona un dipendente prima di esportare.','error');return}
  if(dataset.monthIndex===null||!dataset.year){showStatus('Il mese o l’anno non sono stati identificati: impossibile creare date corrette.','error');return}
  const events=[];
  for(let i=0;i<dataset.days.length;i++){
-  const code=emp.shifts[i];
-  if(!code||['R1','R2','RZ','FER','TRN','OFF'].includes(code.toUpperCase()))continue;
+  const code=effectiveShift(emp,i);
+  if(!code||code==='—'||['R1','R2','RZ','FER','TRN','OFF'].includes(code.toUpperCase()))continue;
   const startHour=shiftStartHour(code);
   const date=new Date(dataset.year,dataset.monthIndex,i+1);
   let event;
@@ -653,10 +765,10 @@ function exportICS(){
    const startMinutes=Math.round(startHour*60);
    const start=new Date(dataset.year,dataset.monthIndex,i+1,Math.floor(startMinutes/60),startMinutes%60);
    const end=new Date(start.getTime()+SHIFT_HOURS*60*60*1000);
-   event=['BEGIN:VEVENT','UID:turni-'+emp.id+'-'+icsDate(date)+'@gestionale-turni-pro','DTSTAMP:'+icsDateTime(new Date()) ,'DTSTART:'+icsDateTime(start),'DTEND:'+icsDateTime(end),'SUMMARY:'+icsEscape('Turno '+code+' — '+emp.cognome+' '+emp.nome),'DESCRIPTION:'+icsEscape('Codice originale: '+code+'\\nDurata configurata: 8 ore'),'END:VEVENT'].join('\r\n');
+   event=['BEGIN:VEVENT','UID:turni-'+emp.id+'-'+icsDate(date)+'@gestionale-turni-pro','DTSTAMP:'+icsDateTime(new Date()) ,'DTSTART:'+icsDateTime(start),'DTEND:'+icsDateTime(end),'SUMMARY:'+icsEscape('Turno '+code+' — '+emp.cognome+' '+emp.nome),'DESCRIPTION:'+icsEscape(icsEditDescription(emp,i,code)+'\\nDurata configurata: 8 ore'),'END:VEVENT'].join('\r\n');
   } else {
    // Unrecognized/non-H code: export as an all-day event preserving the original code.
-   event=['BEGIN:VEVENT','UID:turni-'+emp.id+'-'+icsDate(date)+'@gestionale-turni-pro','DTSTAMP:'+icsDateTime(new Date()),'DTSTART;VALUE=DATE:'+icsDate(date),'DTEND;VALUE=DATE:'+icsDate(new Date(dataset.year,dataset.monthIndex,i+2)),'SUMMARY:'+icsEscape('Turno '+code+' — '+emp.cognome+' '+emp.nome),'DESCRIPTION:'+icsEscape('Codice originale: '+code+'; orario non convertito'),'END:VEVENT'].join('\r\n');
+   event=['BEGIN:VEVENT','UID:turni-'+emp.id+'-'+icsDate(date)+'@gestionale-turni-pro','DTSTAMP:'+icsDateTime(new Date()),'DTSTART;VALUE=DATE:'+icsDate(date),'DTEND;VALUE=DATE:'+icsDate(new Date(dataset.year,dataset.monthIndex,i+2)),'SUMMARY:'+icsEscape('Turno '+code+' — '+emp.cognome+' '+emp.nome),'DESCRIPTION:'+icsEscape(icsEditDescription(emp,i,code)+'; orario non convertito'),'END:VEVENT'].join('\r\n');
   }
   events.push(event);
  }
