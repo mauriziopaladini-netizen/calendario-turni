@@ -51,6 +51,15 @@ VERSIONE 7 - MODIFICHE PERSONALIZZATE DEL CALENDARIO
 - Lo stato 'approvato' è una registrazione manuale e non una verifica ufficiale.
 
 
-CORREZIONE v8 - PDF CON 24 COLONNE
-- Il lettore accetta righe dipendente con 20 o più codici turno invece di richiedere almeno 28.
-- Il calendario mostra solo i giorni effettivamente presenti nel PDF. Se il mese ha più giorni, mostra un avviso esplicito e non inventa i codici mancanti.
+VERSIONE 8 - COMPATIBILITA' PROSPETTI SENZA MATRICOLA
+- Corretto il riconoscimento delle righe che iniziano direttamente con cognome e nome, senza codice numerico dipendente.
+- Aggiunto il codice *** tra i valori turno ammessi.
+- La chiave interna del dipendente viene generata dal nominativo quando la matricola non e' presente.
+- Aggiornata la cache PWA per forzare il caricamento della versione corretta.
+
+\nVERSIONE 9 - CONTROLLO AUTOMATICO PDF
+- Aggiunto pannello di verifica per ogni dipendente.
+- Controlla il numero di codici rispetto ai giorni del mese.
+- Evidenzia nominativi duplicati e codici turno non riconosciuti.
+- Confronta la sequenza importata con la coda della riga originale estratta da PDF.js.
+- Il controllo non sostituisce la verifica visiva del PDF: una lettura errata ma formalmente valida può comunque richiedere correzione manuale.

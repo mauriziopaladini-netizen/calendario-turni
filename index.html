@@ -128,6 +128,14 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
    <h3 class="font-bold text-lg">Controllo prima dell'uso</h3>
    <p class="text-sm text-slate-600 mt-1">Dopo l'importazione controlla il tabellone. Il sistema segnala le righe con un numero di turni diverso dai giorni del mese; non corregge automaticamente eventuali errori del PDF.</p>
    <div id="warnings" class="mt-3 text-sm text-slate-600">Carica un PDF per iniziare.</div>
+    <div id="validationPanel" class="mt-4 rounded-xl border border-slate-200 p-3">
+     <div class="flex flex-wrap items-center justify-between gap-2">
+      <div><h4 class="font-bold">Confronto automatico PDF / turni importati</h4><p class="text-xs text-slate-500">Verifica numero di codici, nominativi duplicati, codici non riconosciuti e corrispondenza con la riga originale estratta.</p></div>
+      <button id="runValidation" type="button" class="rounded-lg bg-blue-600 text-white px-3 py-2 text-sm font-semibold">Ripeti controllo</button>
+     </div>
+     <div id="validationSummary" class="mt-3 text-sm text-slate-600">Carica un PDF per avviare il controllo.</div>
+     <div id="validationDetails" class="mt-3 overflow-auto"></div>
+    </div>
   </div>
  </section>
  <section id="view-matrix" class="view hidden space-y-4">
@@ -260,7 +268,7 @@ if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc='https://cdnjs.cloud
 const MONTHS={gennaio:0,gen:0,febbraio:1,feb:1,marzo:2,mar:2,aprile:3,apr:3,maggio:4,mag:4,giugno:5,giu:5,luglio:6,lug:6,agosto:7,ago:7,settembre:8,set:8,ottobre:9,ott:9,novembre:10,nov:10,dicembre:11,dic:11};
 const MONTH_NAMES=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
 const WEEKDAYS=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
-const SHIFT_RE=/^(?:H\d{2}|R1|R2|RZ|FER|TRN|OFF|81|82|M10|\d{1,2})$/i;
+const SHIFT_RE=/^(?:H\d{2}|R1|R2|RZ|FER|TRN|OFF|81|82|M10|\d{1,2}|\*{3})$/i;
 let dataset={monthIndex:null,year:null,monthLabel:'',days:[],employees:[],rawText:'',modifications:{}};
 let selectedIds=new Set(), onlySelected=false;
 let displayMode='code';
@@ -286,6 +294,7 @@ document.getElementById('themeToggle').addEventListener('click',()=>{
 });
 try{if(localStorage.getItem('turni-theme')==='dark'){document.body.classList.add('theme-dark');document.getElementById('themeToggle').textContent='☀️ Tema chiaro'}}catch(e){}
 document.getElementById('pdfFile').addEventListener('change',handlePDFUpload);
+document.getElementById('runValidation').addEventListener('click',validateImportedData);
 document.getElementById('search').addEventListener('input',renderMatrix);
 document.getElementById('selectedOnly').addEventListener('click',()=>{onlySelected=!onlySelected;document.getElementById('selectedOnly').classList.toggle('bg-blue-100',onlySelected);renderMatrix()});
 document.getElementById('clearSelection').addEventListener('click',()=>{selectedIds.clear();onlySelected=false;document.getElementById('selectedOnly').classList.remove('bg-blue-100');renderMatrix();renderCalendar()});
@@ -473,102 +482,145 @@ function detectMonthYear(text,filename){
 function tokenize(line){return line.replace(/[|]/g,' ').split(/\s+/).map(s=>s.trim()).filter(Boolean)}
 function parseEmployeeLine(line,expectedDays){
  const tokens=tokenize(line);
- if(!tokens.length||!/^\d{5}$/.test(tokens[0]))return null;
- const id=tokens[0];
- // In these rosters each employee row ends with one code per calendar day.
+ if(tokens.length<4)return null;
+ // I prospetti possono avere un ID numerico oppure iniziare direttamente
+ // con cognome e nome (come il PDF RMP/Ros). Cerca i codici turno in coda.
  let shiftStart=-1;
- for(let i=1;i<tokens.length;i++){
-  const tail=tokens.slice(i);
-  if(tail.length>=15 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=i;break;}
+ if(expectedDays && tokens.length>=expectedDays+2){
+  const start=tokens.length-expectedDays;
+  if(tokens.slice(start).every(t=>SHIFT_RE.test(t)))shiftStart=start;
  }
  if(shiftStart<0){
-  // Fallback: use the expected month length and validate the last N tokens.
-  if(expectedDays && tokens.length>=Math.min(expectedDays,15)+3){
-   for(let start=3;start<tokens.length;start++){
-    const tail=tokens.slice(start);
-    if(tail.length>=15 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=start;break;}
-   }
+  for(let i=2;i<tokens.length;i++){
+   const tail=tokens.slice(i);
+   if(tail.length>=28 && tail.length<=31 && tail.every(t=>SHIFT_RE.test(t))){shiftStart=i;break;}
   }
  }
- if(shiftStart<3)return null;
- const nameTokens=tokens.slice(1,shiftStart);
- const shifts=tokens.slice(shiftStart).map(s=>s.toUpperCase());
- if(nameTokens.length<2||shifts.length<1)return null;
+ if(shiftStart<0)return null;
+ let nameTokens=tokens.slice(0,shiftStart);
+ let id;
+ if(/^\d{5}$/.test(nameTokens[0]||'')){
+  id=nameTokens.shift();
+ }else{
+  // In assenza di matricola usa il nominativo come chiave stabile.
+  id=nameTokens.join('_').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase();
+ }
+ if(nameTokens.length<2)return null;
  const nome=nameTokens.pop();
  const cognome=nameTokens.join(' ');
+ const shifts=tokens.slice(shiftStart).map(s=>s.toUpperCase());
  return {id,cognome,nome,shifts,sourceLine:line};
-}
-function detectVisibleDayCount(lines, expectedDays){
- // Prefer the explicit day-number header (e.g. "ott-26 1 2 ... 24") over
- // the calendar's theoretical month length: some operational rosters omit columns intentionally.
- let best=0;
- for(const line of lines){
-  const tokens=tokenize(line);
-  if(!tokens.some(t=>/^(?:ID|Cognome|Nome)$/i.test(t))) {
-   const nums=tokens.map(t=>/^\d{1,2}$/.test(t)?Number(t):null).filter(n=>n!==null);
-   let run=0, prev=null;
-   for(const n of nums){
-    if(n===1){run=1;prev=1;continue;}
-    if(prev!==null && n===prev+1){run++;prev=n;best=Math.max(best,run);}
-    else {run=0;prev=null;}
-   }
-  }
- }
- if(best>=15)return best;
- // Fallback: use the most common employee row length, which also supports headers
- // that PDF.js extracts in separate text fragments.
- const lengths=[];
- for(const line of lines){const e=parseEmployeeLine(line,expectedDays);if(e)lengths.push(e.shifts.length)}
- if(lengths.length){const counts={};for(const n of lengths)counts[n]=(counts[n]||0)+1;return Number(Object.entries(counts).sort((a,b)=>b[1]-a[1])[0][0]);}
- return expectedDays||31;
 }
 function parseSchedule(text,filename){
  const date=detectMonthYear(text,filename);
  const expectedDays=date.monthIndex!==null&&date.year?new Date(date.year,date.monthIndex+1,0).getDate():null;
  const lines=text.split(/\n/).map(s=>s.trim()).filter(Boolean);
- const visibleDays=detectVisibleDayCount(lines,expectedDays);
  const employees=[];
  for(const line of lines){
-  const emp=parseEmployeeLine(line,visibleDays);
+  const emp=parseEmployeeLine(line,expectedDays);
   if(emp)employees.push(emp);
  }
- // Deduplicate employees repeated across pages, preferring the row with the most shifts.
- const byId=new Map();
- for(const e of employees){const old=byId.get(e.id);if(!old||e.shifts.length>old.shifts.length)byId.set(e.id,e)}
- const unique=[...byId.values()];
+ // Remove duplicate rows if PDF text extraction generated overlapping baselines.
+ const unique=[], seen=new Set();
+ for(const e of employees){const k=e.id;if(!seen.has(k)){seen.add(k);unique.push(e)}}
  if(!unique.length){
-  showStatus('Non ho riconosciuto righe dipendente. Apri “Testo estratto” per controllare la struttura del PDF.', 'error');
+  showStatus('Non ho riconosciuto righe dipendente. Questo PDF potrebbe avere una struttura diversa o essere una scansione. Apri “Testo estratto” per verificare.', 'error');
   dataset.employees=[];renderMatrix();return;
  }
- const maxDays=Math.min(31,Math.max(visibleDays,...unique.map(e=>e.shifts.length)));
- // Keep a fixed day slot for every visible day. If a row is short, do not shift its
- // later values: mark missing cells explicitly instead of fabricating codes.
- for(const emp of unique){
-  if(emp.shifts.length<maxDays)emp.shifts=emp.shifts.concat(Array(maxDays-emp.shifts.length).fill(''));
-  if(emp.shifts.length>maxDays)emp.shifts=emp.shifts.slice(0,maxDays);
- }
+ const maxDays=expectedDays||Math.max(...unique.map(e=>e.shifts.length));
  dataset={...dataset,monthIndex:date.monthIndex,year:date.year,monthLabel:date.monthIndex!==null?(MONTH_NAMES[date.monthIndex]+(date.year?' '+date.year:'')):'Mese non identificato',days:Array.from({length:maxDays},(_,i)=>i+1),employees:unique,modifications:{}};
  selectedIds.clear();onlySelected=false;
  document.getElementById('selectedOnly').classList.remove('bg-blue-100');
  document.getElementById('statEmployees').textContent=unique.length;
  document.getElementById('statDays').textContent=maxDays;
  document.getElementById('statMonth').textContent=dataset.monthLabel;
- document.getElementById('matrixSubtitle').textContent=dataset.monthLabel+' · '+unique.length+' dipendenti · '+maxDays+' giorni presenti nel PDF';
+ document.getElementById('matrixSubtitle').textContent=dataset.monthLabel+' · '+unique.length+' dipendenti';
  document.getElementById('calendarSubtitle').textContent=dataset.monthLabel;
  document.getElementById('warnings').innerHTML='';
- const rowIssues=unique.filter(e=>e.shifts.filter(Boolean).length!==maxDays);
- const notes=[];
- if(expectedDays&&maxDays<expectedDays)notes.push('Il PDF contiene '+maxDays+' giorni su '+expectedDays+' del mese: i giorni non presenti nel documento non sono stati inventati.');
- if(rowIssues.length)notes.push(rowIssues.length+' righe hanno celle vuote o un numero di codici diverso dalle colonne riconosciute: controllarle nell’anteprima.');
- const div=document.createElement('div');
- if(notes.length){div.className='rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-900';div.textContent=notes.join(' ');document.getElementById('warnings').appendChild(div)}
- else {document.getElementById('warnings').textContent='Struttura riconosciuta: '+maxDays+' giorni e '+unique.length+' dipendenti. Confronta comunque i dati con il PDF originale.';}
+ const issues=unique.filter(e=>e.shifts.length!==maxDays);
+ if(issues.length){
+  const div=document.createElement('div');div.className='rounded-lg bg-amber-50 border border-amber-200 p-3 text-amber-900';
+  div.textContent='Attenzione: '+issues.length+' righe hanno un numero di turni diverso dai '+maxDays+' giorni previsti. Controllare: '+issues.slice(0,8).map(e=>e.cognome+' '+e.nome+' ('+e.shifts.length+')').join(', ')+(issues.length>8?'…':'');
+  document.getElementById('warnings').appendChild(div);
+ }else{
+  document.getElementById('warnings').textContent='Controllo strutturale superato: tutte le righe riconosciute hanno '+maxDays+' codici turno. Confronta comunque i dati con il PDF originale.';
+ }
  populateEmployeeSelect();
  renderMatrix();renderCalendar();renderNextShift();renderPersonalSummary();
- showStatus('Importazione completata: '+unique.length+' dipendenti rilevati e '+maxDays+' giorni presenti nel prospetto. Verifica i dati rispetto al PDF originale.', 'success');
+ showStatus('Importazione completata: '+unique.length+' dipendenti rilevati. Verifica i turni rispetto al PDF originale.', 'success');
  saveCurrentMonth(false);
  setView('matrix');
 }
+
+function validateImportedData(){
+ const summary=document.getElementById('validationSummary');
+ const details=document.getElementById('validationDetails');
+ if(!dataset.employees||!dataset.employees.length){
+  summary.textContent='Nessun prospetto caricato.';
+  details.innerHTML='';
+  return;
+ }
+ const expected=dataset.days.length;
+ const seen=new Map();
+ const rows=[];
+ let countLength=0, countUnknown=0, countSourceMismatch=0, countDuplicate=0;
+ const known=/^(?:H\d{2}|R1|R2|RZ|FER|TRN|OFF|81|82|M10|\d{1,2}|\*{3})$/i;
+ for(const emp of dataset.employees){
+  const full=(emp.cognome+' '+emp.nome).trim().toUpperCase();
+  const key=full.normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+  const duplicate=seen.has(key);
+  if(duplicate)countDuplicate++;
+  else seen.set(key,true);
+  const badCodes=emp.shifts.filter(s=>!known.test(String(s||'')));
+  const lengthBad=emp.shifts.length!==expected;
+  if(lengthBad)countLength++;
+  countUnknown+=badCodes.length;
+  // Cross-check the imported shift sequence against the tail of its original extracted line.
+  const originalTokens=tokenize(emp.sourceLine||'');
+  const sourceTail=originalTokens.slice(-emp.shifts.length).map(s=>s.toUpperCase());
+  const sourceMismatch=sourceTail.length!==emp.shifts.length || sourceTail.some((s,i)=>s!==emp.shifts[i]);
+  if(sourceMismatch)countSourceMismatch++;
+  const ok=!duplicate&&!lengthBad&&!badCodes.length&&!sourceMismatch;
+  rows.push({name:emp.cognome+' '+emp.nome, count:emp.shifts.length, duplicate, lengthBad, badCodes, sourceMismatch, ok});
+ }
+ const problemRows=rows.filter(r=>!r.ok);
+ const good=rows.length-problemRows.length;
+ const statusClass=problemRows.length?'bg-amber-50 border-amber-200 text-amber-900':'bg-green-50 border-green-200 text-green-900';
+ summary.innerHTML='';
+ const box=document.createElement('div');
+ box.className='rounded-lg border p-3 '+statusClass;
+ const strong=document.createElement('strong');
+ strong.textContent=problemRows.length
+  ? 'Controllo completato: '+good+'/'+rows.length+' righe senza anomalie rilevate.'
+  : 'Controllo superato: '+rows.length+' righe senza anomalie rilevate.';
+ box.appendChild(strong);
+ const p=document.createElement('p');
+ p.className='mt-1 text-xs';
+ p.textContent='Dipendenti: '+rows.length+' · Giorni previsti: '+expected+' · Righe con conteggio diverso: '+countLength+' · Nominativi duplicati: '+countDuplicate+' · Codici anomali: '+countUnknown+' · Differenze rispetto alla riga estratta: '+countSourceMismatch+'.';
+ box.appendChild(p);
+ summary.appendChild(box);
+ details.innerHTML='';
+ const table=document.createElement('table');
+ table.className='w-full text-xs border-collapse';
+ table.innerHTML='<thead><tr class="bg-slate-100"><th class="text-left p-2 border">Dipendente</th><th class="p-2 border">Codici</th><th class="text-left p-2 border">Esito</th></tr></thead>';
+ const tbody=document.createElement('tbody');
+ for(const r of rows){
+  const tr=document.createElement('tr');
+  tr.className=r.ok?'':'bg-amber-50';
+  const td1=document.createElement('td');td1.className='p-2 border';td1.textContent=r.name;
+  const td2=document.createElement('td');td2.className='p-2 border text-center';td2.textContent=r.count+'/'+expected;
+  const td3=document.createElement('td');td3.className='p-2 border';
+  const issues=[];
+  if(r.duplicate)issues.push('nominativo duplicato');
+  if(r.lengthBad)issues.push('numero giorni non corretto');
+  if(r.badCodes.length)issues.push('codici: '+r.badCodes.join(', '));
+  if(r.sourceMismatch)issues.push('riga originale non coincidente');
+  td3.textContent=r.ok?'OK':issues.join('; ');
+  tr.append(td1,td2,td3);tbody.appendChild(tr);
+ }
+ table.appendChild(tbody);details.appendChild(table);
+}
+
 function shiftClass(code){
  const s=(code||'').toUpperCase();
  if(s==='FER'||s==='TRN')return 'shift-fer';
