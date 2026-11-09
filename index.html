@@ -18,7 +18,8 @@
   .shift-off{background:#bbf7d0;color:#166534}
   .shift-work{background:#fef3c7;color:#92400e}
   .shift-other{background:#e2e8f0;color:#334155}
-  .sticky-head th{position:sticky;top:0;z-index:2}
+  .sticky-head th{position:sticky;top:0;z-index:4}
+#matrixTable{width:max-content;min-width:100%}#matrixTable th:first-child,#matrixTable td:first-child{position:sticky;left:0;z-index:3;background:#f8fafc}#matrixTable th:nth-child(2),#matrixTable td:nth-child(2){position:sticky;left:36px;z-index:3;background:#f8fafc}#matrixTable th:nth-child(3),#matrixTable td:nth-child(3){position:sticky;left:92px;z-index:3;background:#f8fafc}#matrixTable th:nth-child(4),#matrixTable td:nth-child(4){position:sticky;left:190px;z-index:3;background:#f8fafc}#matrixTable thead th:first-child,#matrixTable thead th:nth-child(2),#matrixTable thead th:nth-child(3),#matrixTable thead th:nth-child(4){z-index:6;background:#1e293b}#matrixTable td.shift{min-width:48px}#compareTable th{position:sticky;top:0;z-index:2}#compareTable th:first-child,#compareTable td:first-child{position:sticky;left:0;z-index:3;background:#f8fafc}.compare-same{background:#dcfce7;color:#166534}.compare-diff{background:#fef3c7;color:#92400e}.compare-workrest{background:#ffe4e6;color:#9f1239}.compare-missing{background:#e2e8f0;color:#334155}
   @media print {.no-print{display:none!important} body{background:white} #matrixWrap{overflow:visible!important} table{font-size:7pt!important}}
 
 :root{color-scheme:light}
@@ -68,7 +69,7 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
   <div class="flex gap-2 no-print">
    <button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="home">Home</button>
    <button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="matrix">Tabellone</button>
-   <button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="calendar">Calendario</button>
+   <button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="calendar">Calendario</button><button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="compare">Confronta</button><button class="navbtn rounded-lg bg-blue-800 px-3 py-2" data-view="split">PDF + tabella</button>
   </div>
  </div>
 </header>
@@ -166,7 +167,15 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
    <table id="matrixTable" class="border-collapse text-xs hidden w-full"></table>
   </div>
  </section>
- <section id="view-calendar" class="view hidden space-y-4">
+ 
+<section id="view-compare" class="view hidden space-y-4"><div class="bg-white rounded-2xl p-4 md:p-5 shadow-sm space-y-4">
+<div class="flex flex-wrap items-center justify-between gap-3"><div><h2 class="text-xl md:text-2xl font-extrabold">Confronto colleghi</h2><p id="compareSubtitle" class="text-sm text-slate-500">Confronta il tuo prospetto con più colleghi nello stesso momento.</p></div><button id="compareOnlyDiff" class="rounded-lg border px-3 py-2 text-sm font-semibold">Mostra solo differenze</button></div>
+<div class="grid md:grid-cols-2 gap-3"><label class="text-sm font-semibold">Il mio nominativo<select id="compareMine" class="mt-1 block w-full border rounded-lg px-3 py-2"></select></label><div class="text-sm"><div class="font-semibold mb-1">Colleghi da confrontare</div><div id="comparePeople" class="border rounded-xl p-2 max-h-48 overflow-auto text-sm text-slate-600">Carica un PDF per selezionare i colleghi.</div></div></div>
+<div class="flex flex-wrap gap-3 text-xs text-slate-600"><span>🟩 Uguale</span><span>🟨 Turno diverso</span><span>🟥 Lavoro/riposo diverso</span><span>⬜ Dato mancante</span></div>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-2"><div class="rounded-xl border bg-slate-50 p-3"><div class="text-xs text-slate-500">Colleghi selezionati</div><div id="compareCount" class="text-2xl font-bold">0</div></div><div class="rounded-xl border bg-slate-50 p-3"><div class="text-xs text-slate-500">Giorni con differenze</div><div id="compareDiffDays" class="text-2xl font-bold">0</div></div><div class="rounded-xl border bg-slate-50 p-3"><div class="text-xs text-slate-500">Giornate lavorative uguali</div><div id="compareSameWork" class="text-2xl font-bold">0</div></div><div class="rounded-xl border bg-slate-50 p-3"><div class="text-xs text-slate-500">Lavoro/riposo diverso</div><div id="compareWorkRest" class="text-2xl font-bold">0</div></div></div>
+<div id="compareTableWrap" class="overflow-auto max-h-[70vh] border rounded-xl"><div id="compareEmpty" class="p-8 text-center text-slate-500">Seleziona il tuo nominativo e almeno un collega.</div><table id="compareTable" class="hidden border-collapse text-xs min-w-full"></table></div><p class="text-xs text-slate-500">Il confronto usa i codici originali del PDF, non le modifiche personali. Una differenza non significa necessariamente un errore o uno scambio approvato.</p></div></section>
+<section id="view-split" class="view hidden space-y-4"><div class="bg-white rounded-2xl p-4 shadow-sm"><h2 class="text-xl font-bold">Documento originale e tabellone</h2><p class="text-sm text-slate-500">PDF a sinistra, prospetto ricostruito a destra.</p><span id="splitFileLabel" class="text-xs text-slate-500">Nessun PDF caricato</span></div><div class="grid grid-cols-1 xl:grid-cols-2 gap-3 items-start"><div class="bg-white rounded-xl border shadow-sm overflow-hidden"><div class="p-3 border-b font-bold text-sm">PDF originale</div><iframe id="originalPdfFrame" title="PDF originale dei turni" class="w-full bg-slate-100" style="height:78vh" src="about:blank"></iframe><div id="splitPdfEmpty" class="p-6 text-center text-sm text-slate-500">Importa un PDF per visualizzarlo qui.</div></div><div class="bg-white rounded-xl border shadow-sm overflow-hidden"><div class="p-3 border-b font-bold text-sm">Tabellone completo</div><div id="splitMatrixWrap" class="overflow-auto" style="height:78vh"><div class="p-6 text-sm text-slate-500">Il tabellone apparirà dopo l'importazione.</div><table id="splitMatrixTable" class="border-collapse text-xs hidden w-full"></table></div></div></div></section>
+<section id="view-calendar" class="view hidden space-y-4">
   <div class="bg-white rounded-2xl p-4 shadow-sm flex flex-wrap items-center gap-3 justify-between">
    <div><h2 class="text-xl font-bold">Calendario personale</h2><p id="calendarSubtitle" class="text-sm text-slate-500">Seleziona un dipendente.</p></div>
    <div class="flex flex-wrap items-center gap-3">
@@ -258,6 +267,8 @@ body.theme-dark .shift-other{background:#334155;color:#e2e8f0}
   <button data-go="home" class="active"><span>🏠</span><span>Home</span></button>
   <button data-go="matrix"><span>📊</span><span>Tabellone</span></button>
   <button data-go="calendar"><span>📅</span><span>Calendario</span></button>
+  <button data-go="compare"><span>⇄</span><span>Confronta</span></button>
+  <button data-go="split"><span>▤</span><span>PDF+tabella</span></button>
   <button id="mobileImport"><span>📄</span><span>Importa PDF</span></button>
  </div>
 </nav>
@@ -270,6 +281,7 @@ const MONTH_NAMES=['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Lugl
 const WEEKDAYS=['Lun','Mar','Mer','Gio','Ven','Sab','Dom'];
 const SHIFT_RE=/^(?:H\d{2}|R1|R2|RZ|FER|TRN|OFF|81|82|M10|\d{1,2}|\*{3})$/i;
 let dataset={monthIndex:null,year:null,monthLabel:'',days:[],employees:[],rawText:'',modifications:{}};
+ let originalPdfUrl=null,compareSelectedIds=new Set(),compareDiffOnly=false;
 let selectedIds=new Set(), onlySelected=false;
 let displayMode='code';
 const SHIFT_HOURS=8;
@@ -281,7 +293,7 @@ function setView(name){
  document.querySelectorAll('.view').forEach(v=>v.classList.add('hidden'));
  const target=document.getElementById('view-'+name); if(target)target.classList.remove('hidden');
  document.querySelectorAll('.bottom-nav [data-go]').forEach(b=>b.classList.toggle('active',b.dataset.go===name));
- if(name==='matrix')renderMatrix(); if(name==='calendar')renderCalendar(); if(name==='home'){renderNextShift();renderPersonalSummary();}
+ if(name==='matrix')renderMatrix(); if(name==='calendar')renderCalendar(); if(name==='compare')renderCompare(); if(name==='split')renderSplitMatrix(); if(name==='home'){renderNextShift();renderPersonalSummary();}
 }
 document.querySelectorAll('.navbtn').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.view)));
 document.querySelectorAll('[data-go]').forEach(b=>b.addEventListener('click',()=>setView(b.dataset.go)));
@@ -295,6 +307,9 @@ document.getElementById('themeToggle').addEventListener('click',()=>{
 try{if(localStorage.getItem('turni-theme')==='dark'){document.body.classList.add('theme-dark');document.getElementById('themeToggle').textContent='☀️ Tema chiaro'}}catch(e){}
 document.getElementById('pdfFile').addEventListener('change',handlePDFUpload);
 document.getElementById('runValidation').addEventListener('click',validateImportedData);
+ document.getElementById('compareMine').addEventListener('change',populateComparePeople);
+ document.getElementById('comparePeople').addEventListener('change',ev=>{if(ev.target.matches('input[type=checkbox]')){ev.target.checked?compareSelectedIds.add(ev.target.value):compareSelectedIds.delete(ev.target.value);renderCompare();}});
+ document.getElementById('compareOnlyDiff').addEventListener('click',()=>{compareDiffOnly=!compareDiffOnly;document.getElementById('compareOnlyDiff').textContent=compareDiffOnly?'Mostra tutti i giorni':'Mostra solo differenze';renderCompare();});
 document.getElementById('search').addEventListener('input',renderMatrix);
 document.getElementById('selectedOnly').addEventListener('click',()=>{onlySelected=!onlySelected;document.getElementById('selectedOnly').classList.toggle('bg-blue-100',onlySelected);renderMatrix()});
 document.getElementById('clearSelection').addEventListener('click',()=>{selectedIds.clear();onlySelected=false;document.getElementById('selectedOnly').classList.remove('bg-blue-100');renderMatrix();renderCalendar()});
@@ -621,6 +636,12 @@ function validateImportedData(){
  table.appendChild(tbody);details.appendChild(table);
 }
 
+
+function isWorkCode(c){return /^H\d{2}$/.test(String(c||'').toUpperCase());}function isRestCode(c){return ['R1','R2','RZ','LIBERO'].includes(String(c||'').toUpperCase());}
+function compareCellClass(a,b){if(!a||!b||a==='—'||b==='—')return 'compare-missing';if(a===b)return 'compare-same';if((isWorkCode(a)&&isRestCode(b))||(isRestCode(a)&&isWorkCode(b)))return 'compare-workrest';return 'compare-diff';}
+function renderCompare(){const mineId=document.getElementById('compareMine')?.value,mine=dataset.employees.find(e=>e.id===mineId),colleagues=dataset.employees.filter(e=>compareSelectedIds.has(e.id)&&e.id!==mineId),table=document.getElementById('compareTable'),empty=document.getElementById('compareEmpty');if(!mine||!colleagues.length){table.classList.add('hidden');empty.classList.remove('hidden');empty.textContent=mine?'Seleziona almeno un collega da confrontare.':'Carica un PDF e seleziona il tuo nominativo.';['compareCount','compareDiffDays','compareSameWork','compareWorkRest'].forEach(id=>document.getElementById(id).textContent='0');return;}let diffs=0,same=0,wr=0,rows=[];for(let i=0;i<dataset.days.length;i++){const day=dataset.days[i],mc=mine.shifts[i]||'—',vals=colleagues.map(e=>({emp:e,code:e.shifts[i]||'—'})),diff=vals.some(v=>v.code!==mc),workrest=vals.some(v=>(isWorkCode(mc)&&isRestCode(v.code))||(isRestCode(mc)&&isWorkCode(v.code)));if(diff)diffs++;else if(isWorkCode(mc))same++;if(workrest)wr++;if(!compareDiffOnly||diff)rows.push({day,mc,vals,diff});}let out='<thead><tr class="bg-slate-800 text-white"><th class="p-2 border text-left min-w-20">Giorno</th><th class="p-2 border min-w-24">Tu · '+escapeHtml(mine.cognome)+'</th>';colleagues.forEach(e=>out+='<th class="p-2 border min-w-28">'+escapeHtml(e.cognome+' '+e.nome)+'</th>');out+='</tr></thead><tbody>';rows.forEach(r=>{out+='<tr><td class="p-2 border font-bold whitespace-nowrap">'+r.day+' '+escapeHtml(weekdayForDay(r.day))+'</td><td class="p-2 border text-center font-bold '+(r.diff?'compare-diff':'compare-same')+'">'+escapeHtml(displayShift(r.mc))+'</td>';r.vals.forEach(v=>out+='<td class="p-2 border text-center font-bold '+compareCellClass(r.mc,v.code)+'">'+escapeHtml(displayShift(v.code))+'</td>');out+='</tr>';});table.innerHTML=out+'</tbody>';table.classList.remove('hidden');empty.classList.add('hidden');document.getElementById('compareCount').textContent=colleagues.length;document.getElementById('compareDiffDays').textContent=diffs;document.getElementById('compareSameWork').textContent=same;document.getElementById('compareWorkRest').textContent=wr;document.getElementById('compareSubtitle').textContent=mine.cognome+' '+mine.nome+' confrontato con '+colleagues.length+' colleghi · '+dataset.monthLabel;}
+function renderSplitMatrix(){const src=document.getElementById('matrixTable'),dst=document.getElementById('splitMatrixTable'),wrap=document.getElementById('splitMatrixWrap');if(!dataset.employees.length||src.classList.contains('hidden')){dst.classList.add('hidden');return;}dst.innerHTML=src.innerHTML;dst.className=src.className.replace('hidden','').trim();const ph=wrap.querySelector('div');if(ph)ph.classList.add('hidden');}
+
 function shiftClass(code){
  const s=(code||'').toUpperCase();
  if(s==='FER'||s==='TRN')return 'shift-fer';
@@ -646,6 +667,7 @@ function renderMatrix(){
  html+='</tbody>';table.innerHTML=html;
  table.querySelectorAll('tbody tr').forEach(tr=>tr.addEventListener('click',ev=>{if(ev.target.tagName==='INPUT'){}const id=tr.dataset.id;selectedIds.has(id)?selectedIds.delete(id):selectedIds.add(id);document.getElementById('selectionInfo').textContent=selectedIds.size+' dipendenti selezionati';renderMatrix();renderCalendar()}));
  document.getElementById('selectionInfo').textContent=selectedIds.size+' dipendenti selezionati · '+list.length+' righe visualizzate';
+  renderSplitMatrix();
 }
 function weekdayForDay(day){
  if(dataset.monthIndex===null||!dataset.year)return '';
@@ -653,17 +675,18 @@ function weekdayForDay(day){
  return ['Dom','Lun','Mar','Mer','Gio','Ven','Sab'][js];
 }
 function populateEmployeeSelect(){
- const sel=document.getElementById('employeeSelect'),mine=document.getElementById('myEmployeeSelect');
- sel.innerHTML='';mine.innerHTML='';
- dataset.employees.forEach(e=>{
-  const label=e.cognome+' '+e.nome+' ('+e.id+')';
-  const o=document.createElement('option');o.value=e.id;o.textContent=label;sel.appendChild(o);
-  const o2=document.createElement('option');o2.value=e.id;o2.textContent=label;mine.appendChild(o2);
- });
- let saved='';try{saved=localStorage.getItem('turni-preferred-employee')||''}catch(e){}
- const preferred=dataset.employees.find(e=>e.id===saved)||dataset.employees.find(e=>selectedIds.has(e.id))||dataset.employees[0];
+ const sel=document.getElementById('employeeSelect'),mine=document.getElementById('myEmployeeSelect');sel.innerHTML='';mine.innerHTML='';
+ dataset.employees.forEach(e=>{const label=e.cognome+' '+e.nome+' ('+e.id+')';const o=document.createElement('option');o.value=e.id;o.textContent=label;sel.appendChild(o);const o2=document.createElement('option');o2.value=e.id;o2.textContent=label;mine.appendChild(o2);});
+ let saved='';try{saved=localStorage.getItem('turni-preferred-employee')||''}catch(e){}const preferred=dataset.employees.find(e=>e.id===saved)||dataset.employees[0];
  if(preferred){sel.value=preferred.id;mine.value=preferred.id;try{localStorage.setItem('turni-preferred-employee',preferred.id)}catch(e){}}
- renderPersonalSummary();
+ renderPersonalSummary();populateComparePeople();
+}
+function populateComparePeople(){
+ const box=document.getElementById('comparePeople'),mine=document.getElementById('compareMine');if(!box||!mine)return;
+ const wanted=mine.value||document.getElementById('myEmployeeSelect').value;mine.innerHTML='';dataset.employees.forEach(e=>{const o=document.createElement('option');o.value=e.id;o.textContent=e.cognome+' '+e.nome;mine.appendChild(o);});
+ if(wanted&&dataset.employees.some(e=>e.id===wanted))mine.value=wanted;else if(dataset.employees[0])mine.value=dataset.employees[0].id;
+ compareSelectedIds=new Set([...compareSelectedIds].filter(id=>dataset.employees.some(e=>e.id===id)));if(!compareSelectedIds.size){const first=dataset.employees.find(e=>e.id!==mine.value);if(first)compareSelectedIds.add(first.id);}
+ box.innerHTML='';dataset.employees.filter(e=>e.id!==mine.value).forEach(e=>{const label=document.createElement('label');label.className='flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded cursor-pointer';const cb=document.createElement('input');cb.type='checkbox';cb.value=e.id;cb.checked=compareSelectedIds.has(e.id);const span=document.createElement('span');span.textContent=e.cognome+' '+e.nome;label.append(cb,span);box.appendChild(label);});renderCompare();
 }
 function renderPersonalSummary(){
  const ids=['personalMonth','personalWorkDays','personalHours','personalRestDays','personalLeaveDays'];

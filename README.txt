@@ -63,3 +63,11 @@ VERSIONE 8 - COMPATIBILITA' PROSPETTI SENZA MATRICOLA
 - Evidenzia nominativi duplicati e codici turno non riconosciuti.
 - Confronta la sequenza importata con la coda della riga originale estratta da PDF.js.
 - Il controllo non sostituisce la verifica visiva del PDF: una lettura errata ma formalmente valida può comunque richiedere correzione manuale.
+
+VERSIONE 10 - CONFRONTO AVANZATO E VISUALIZZAZIONE DOPPIA
+- Confronto simultaneo del proprio turno con piu colleghi, giorno per giorno.
+- Evidenzia turni uguali, diversi e differenze lavoro/riposo.
+- Riepilogo dei giorni con differenze e filtro per mostrare solo i giorni diversi.
+- Vista PDF + tabella affiancati con PDF originale caricato nel browser.
+- Tabellone con intestazione e colonne identificative bloccate durante lo scorrimento.
+- Il confronto usa i codici originali del PDF e non modifica i dati.
